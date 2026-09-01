@@ -1,0 +1,299 @@
+/* ===========================================================================
+   Base layer: reset, typography defaults, focus, motion.
+   No component styling lives here.
+   =========================================================================== */
+
+/* Self-hosted rather than a CDN: provider independence is a product value and
+   a third-party font host is an uncontrolled dependency on the render path.
+   Latin subsets only — 40KB for both families. */
+
+/* Variable: one file spans the whole 400-700 range we use. */
+@font-face {
+  font-family: 'Instrument Sans';
+  src: url('/fonts/instrument-sans-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+2122, U+2212;
+}
+
+/* Static. Only 400 ships: the machine register is a notation, never bold. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/ibm-plex-mono-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+2000-206F, U+2122, U+2212;
+}
+
+/* Metric-matched fallbacks. `swap` would otherwise reflow the whole answer
+   column when the real face lands; overriding the fallback's metrics to match
+   keeps that swap invisible and holds CLS at zero. */
+@font-face {
+  font-family: 'Instrument Sans Fallback';
+  src: local('Helvetica Neue'), local('Arial'), local('Segoe UI');
+  size-adjust: 101%;
+  ascent-override: 95%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono Fallback';
+  src: local('Menlo'), local('Consolas'), local('DejaVu Sans Mono');
+  size-adjust: 97%;
+  ascent-override: 103%;
+  descent-override: 28%;
+  line-gap-override: 0%;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-width: 0;
+    border-style: solid;
+    border-color: var(--border-subtle);
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    font-family: var(--font-human);
+  }
+
+  /*
+   * The document scrolls. It used to be pinned to `height: 100dvh` with
+   * `overflow: hidden`, which is what the chat workspace needs — and which
+   * every other route inherited. With `html` at `overflow: visible` the body's
+   * value propagates to the viewport, so that rule disabled scrolling for the
+   * whole application, including a marketing page eight thousand pixels tall.
+   *
+   * The workspace now locks its own shell instead (`app-shell.tsx`), which is
+   * the only place that wants a fixed viewport.
+   *
+   * 100dvh, never 100vh: 100vh is wrong on mobile Safari.
+   */
+  body {
+    min-height: 100dvh;
+    background-color: var(--surface-canvas);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 20px;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    /* A stacking context for overlays. Deliberately no height: a fixed one
+       here is the constraint that has to be scoped to the workspace instead. */
+    isolation: isolate;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: inherit;
+    font-weight: inherit;
+    text-wrap: pretty;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+    background: none;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  textarea {
+    resize: none;
+  }
+
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-machine);
+  }
+
+  ul,
+  ol {
+    list-style: none;
+  }
+
+  img,
+  svg {
+    display: block;
+    max-width: 100%;
+  }
+
+  /* Every numeral the system measured aligns down a column. */
+  [data-register='machine'] {
+    font-family: var(--font-machine);
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: var(--accent-quiet);
+    color: var(--text-primary);
+  }
+
+  /* --- Focus -------------------------------------------------------------
+     :focus-visible only, so pointer users never see a ring on click. The ring
+     is never removed; `outline: none` without an equivalent is a lint error. */
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: var(--radius-mark);
+  }
+
+  @media (forced-colors: active) {
+    :focus-visible {
+      outline: 2px solid Highlight;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  /* --- Scrollbars: chrome, so they recede -------------------------------- */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border-default);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 99px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--border-strong);
+  }
+}
+
+@layer components {
+  .skip-link {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: var(--z-toast);
+    transform: translateY(-200%);
+    padding: 8px 12px;
+    background-color: var(--surface-floating);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-control);
+    font-size: 13px;
+  }
+
+  .skip-link:focus-visible {
+    transform: translateY(0);
+  }
+}
+
+/* --- Reduced motion -------------------------------------------------------
+   Three components need more than the blanket rule and handle it themselves:
+   the live indicator becomes a static square, skeletons become a static fill,
+   and the comparison expansion opens instantly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes skeleton {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+/* The live indicator: a square that steps between two opacities. Slow enough to
+   read as "working" rather than as a pulse demanding attention. Never scales,
+   never glows, and is not a circle. */
+@keyframes live-step {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

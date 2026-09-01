@@ -1,0 +1,30 @@
+{
+  "name": "nexusai",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @nexusai/frontend dev",
+    "build": "pnpm -r --workspace-concurrency=1 build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "backend:dev": "pnpm --filter @nexusai/backend dev",
+    "backend:keys": "pnpm --filter @nexusai/backend keys"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.10.2",
+    "eslint": "^9",
+    "eslint-plugin-jsx-a11y": "^6",
+    "eslint-plugin-react-hooks": "^5",
+    "globals": "^15",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8",
+    "vitest": "^3.2.7"
+  }
+}

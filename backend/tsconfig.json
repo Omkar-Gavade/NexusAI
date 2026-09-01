@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "paths": { "@/*": ["./src/*"] },
+    "baseUrl": "."
+  },
+  "include": ["src", "tests", "vitest.config.ts"]
+}

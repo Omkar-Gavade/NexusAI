@@ -1,0 +1,199 @@
+/* ===========================================================================
+   Answer typography.
+
+   Generated content must not out-shout the application chrome, so heading
+   sizes are compressed against a document scale and vertical rhythm does the
+   separating. `margin-block-end` only, so consecutive blocks never double up.
+   =========================================================================== */
+
+.md {
+  font-size: 16px;
+  line-height: 27px;
+  letter-spacing: -0.003em;
+  color: var(--text-primary);
+  overflow-wrap: break-word;
+}
+
+.md > :first-child {
+  margin-block-start: 0;
+}
+
+.md > :last-child {
+  margin-block-end: 0;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre,
+.md table {
+  margin-block-end: 16px;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-weight: 550;
+  color: var(--text-primary);
+}
+
+.md h1 {
+  font-size: 25px;
+  line-height: 34px;
+  letter-spacing: -0.02em;
+  margin-block: 32px 12px;
+}
+
+.md h2 {
+  font-size: 21px;
+  line-height: 30px;
+  letter-spacing: -0.015em;
+  margin-block: 24px 12px;
+}
+
+.md h3 {
+  font-size: 18px;
+  line-height: 26px;
+  letter-spacing: -0.01em;
+  margin-block: 20px 8px;
+}
+
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 16px;
+  line-height: 27px;
+  margin-block: 16px 8px;
+}
+
+.md ul,
+.md ol {
+  margin-block-start: 12px;
+  padding-inline-start: 22px;
+}
+
+.md ul {
+  list-style: disc;
+}
+
+.md ol {
+  list-style: decimal;
+}
+
+.md li {
+  margin-block-end: 8px;
+}
+
+.md li::marker {
+  color: var(--text-tertiary);
+}
+
+.md li > ul,
+.md li > ol {
+  margin-block: 8px 0;
+}
+
+.md strong {
+  font-weight: 700;
+}
+
+.md em {
+  font-style: italic;
+}
+
+.md a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.md a:hover {
+  color: var(--accent-strong);
+  text-decoration-color: currentColor;
+}
+
+/* A rule, not a card: the quote is set off by a single strong line. */
+.md blockquote {
+  border-inline-start: 2px solid var(--border-strong);
+  padding-inline-start: 16px;
+  color: var(--text-secondary);
+}
+
+.md hr {
+  border-block-start: 1px solid var(--border-subtle);
+  margin-block: 24px;
+}
+
+/* Inline code carries no border — a border on inline code is visual noise in
+   dense technical prose. 5px horizontal padding is optical: 4 crowds the
+   glyphs, 8 makes it read as a block. */
+.md :not(pre) > code {
+  font-family: var(--font-machine);
+  font-size: 0.9em;
+  background-color: var(--surface-raised);
+  border-radius: var(--radius-mark);
+  padding: 1px 5px;
+}
+
+.md table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+  max-width: 100%;
+}
+
+.md th,
+.md td {
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  text-align: start;
+  vertical-align: top;
+}
+
+.md th {
+  background-color: var(--surface-raised);
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.md img {
+  border-radius: var(--radius-mark);
+  margin-block-end: 16px;
+}
+
+/* Streaming: text appears, nothing animates. The caret is the only motion and
+   it steps rather than fades, so it reads as a cursor and not a pulse. */
+.md-caret {
+  display: inline-block;
+  inline-size: 2px;
+  block-size: 16px;
+  margin-inline-start: 2px;
+  vertical-align: text-bottom;
+  background-color: var(--accent);
+  animation: md-caret-step 1.1s step-end infinite;
+}
+
+@keyframes md-caret-step {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-caret {
+    animation: none;
+    opacity: 1;
+  }
+}

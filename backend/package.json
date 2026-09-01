@@ -1,0 +1,35 @@
+{
+  "name": "@nexusai/backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/server/main.ts",
+  "scripts": {
+    "dev": "node --experimental-transform-types --env-file=.env --watch src/server/main.ts",
+    "start": "node --env-file=.env dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "keys": "node scripts/generate-keys.mjs",
+    "start:prod": "node dist/server.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/helmet": "^13.0.1",
+    "@nexusai/contracts": "workspace:*",
+    "@node-rs/argon2": "^2",
+    "fastify": "^5.2.1",
+    "jose": "^5.9.6",
+    "mongodb": "^6.12.0",
+    "pino": "^9.6.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.25",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
+  }
+}

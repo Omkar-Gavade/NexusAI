@@ -1,0 +1,241 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   NexusAI design tokens — the single source of visual truth.
+
+   This is the only file in the application permitted to contain a colour
+   value, a radius, a duration, or a font stack. Components reference roles.
+
+   Two layers only: primitives are the raw values below; the semantic layer is
+   the `--surface-*`, `--text-*`, `--border-*` set. A third component-token
+   layer is deliberately absent — with ~30 components it produces hundreds of
+   aliases to maintain for theming flexibility nothing asks for.
+   =========================================================================== */
+
+/* --- Dark: the primary theme, designed first ----------------------------- */
+:root,
+[data-theme='dark'] {
+  --surface-canvas: #131211;
+  --surface-workspace: #191817;
+  --surface-raised: #1f1d1b;
+  --surface-floating: #262421;
+  --surface-hover: #232120;
+  --surface-active: #2b2825;
+  --surface-selected: #16211f;
+
+  --border-subtle: #242220;
+  --border-default: #332f2b;
+  --border-strong: #4a453f;
+  --border-control: #787067;
+
+  --text-primary: #edeae5;
+  --text-secondary: #aba49b;
+  --text-tertiary: #98938c;
+  --text-disabled: #6e6860;
+  --text-inverse: #131211;
+
+  --accent: #5fb3a8;
+  --accent-strong: #7fc9bf;
+  --accent-quiet: #16211f;
+
+  --status-success: #7fb356;
+  --status-success-quiet: #16200f;
+  --status-warning: #d9a441;
+  --status-warning-quiet: #241c0d;
+  --status-danger: #e8736a;
+  --status-danger-quiet: #26140f;
+
+  --shadow-float-value: 0 2px 8px -2px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
+  --shadow-modal-value: 0 12px 32px -8px rgb(0 0 0 / 0.36), 0 2px 8px -4px rgb(0 0 0 / 0.2);
+  --scrim: rgb(0 0 0 / 0.5);
+
+  color-scheme: dark;
+}
+
+/* --- Light: designed independently, not inverted -------------------------
+   Three structural differences from dark, each a consequence of how light
+   behaves rather than a mechanical flip:
+   1. Chrome is DARKER than the canvas here and LIGHTER in dark mode. In both
+      cases chrome recedes and content advances — opposite implementations of
+      the same goal.
+   2. The floating layer runs out of headroom: raised is already near-white, so
+      floating separates by shadow and border with only a 1.025:1 tonal step.
+   3. Accent and status hues are re-picked, not lightened. #5FB3A8 reads 7.57:1
+      on near-black and 1.9:1 on near-white.
+   ------------------------------------------------------------------------ */
+[data-theme='light'] {
+  --surface-canvas: #fbfaf8;
+  --surface-workspace: #f4f2ee;
+  --surface-raised: #fdfcfa;
+  --surface-floating: #ffffff;
+  --surface-hover: #edeae4;
+  --surface-active: #e4e0d9;
+  --surface-selected: #e7f0ee;
+
+  --border-subtle: #e9e5de;
+  --border-default: #dad5cc;
+  --border-strong: #bdb6ab;
+  --border-control: #807a72;
+
+  --text-primary: #1a1816;
+  --text-secondary: #5b554d;
+  --text-tertiary: #696259;
+  --text-disabled: #948d86;
+  --text-inverse: #fbfaf8;
+
+  --accent: #206a63;
+  --accent-strong: #17544e;
+  --accent-quiet: #e7f0ee;
+
+  --status-success: #42691d;
+  --status-success-quiet: #eef3e6;
+  --status-warning: #8a6216;
+  --status-warning-quiet: #f8f1e2;
+  --status-danger: #b93b33;
+  --status-danger-quiet: #fbecea;
+
+  --shadow-float-value: 0 2px 8px -2px rgb(0 0 0 / 0.1), 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-modal-value: 0 12px 32px -8px rgb(0 0 0 / 0.14), 0 2px 8px -4px rgb(0 0 0 / 0.07);
+  --scrim: rgb(26 24 22 / 0.32);
+
+  color-scheme: light;
+}
+
+/* --- Layout, motion and stacking: theme-independent ---------------------- */
+:root {
+  --measure-answer: 68ch;
+  --measure-wide: 84ch;
+
+  --sidebar-width: 264px;
+  --panel-width: 360px;
+  --rail-width: 2px;
+  --rail-gutter: 20px;
+  --gutter: 24px;
+  --header-height: 44px;
+
+  /* Control scale. Shared by Button, IconButton and the marketing CTA. */
+  --control-sm: 26px;
+  --control-md: 30px;
+  --control-lg: 38px;
+  --composer-min-height: 48px;
+  --composer-max-height: 216px;
+
+  --duration-instant: 100ms;
+  --duration-quick: 140ms;
+  --duration-normal: 180ms;
+  --duration-slow: 220ms;
+
+  --z-sticky: 10;
+  --z-scrim: 40;
+  --z-drawer: 50;
+  --z-dropdown: 60;
+  --z-dialog: 80;
+  --z-toast: 90;
+
+  --focus-ring: 0 0 0 2px var(--surface-canvas), 0 0 0 4px var(--accent);
+}
+
+/* --- Tailwind theme mapping ---------------------------------------------
+   `inline` so generated utilities reference the custom properties above
+   rather than baking in a value — that is what lets a single `data-theme`
+   attribute swap the whole palette with no re-render.
+   ------------------------------------------------------------------------ */
+@theme inline {
+  --color-canvas: var(--surface-canvas);
+  --color-workspace: var(--surface-workspace);
+  --color-raised: var(--surface-raised);
+  --color-floating: var(--surface-floating);
+  --color-hover: var(--surface-hover);
+  --color-active: var(--surface-active);
+  --color-selected: var(--surface-selected);
+
+  --color-line-subtle: var(--border-subtle);
+  --color-line: var(--border-default);
+  --color-line-strong: var(--border-strong);
+  --color-line-control: var(--border-control);
+
+  --color-ink: var(--text-primary);
+  --color-ink-2: var(--text-secondary);
+  --color-ink-3: var(--text-tertiary);
+  --color-ink-off: var(--text-disabled);
+  --color-ink-inv: var(--text-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-quiet: var(--accent-quiet);
+
+  --color-ok: var(--status-success);
+  --color-ok-quiet: var(--status-success-quiet);
+  --color-warn: var(--status-warning);
+  --color-warn-quiet: var(--status-warning-quiet);
+  --color-danger: var(--status-danger);
+  --color-danger-quiet: var(--status-danger-quiet);
+
+  /* Two families, two semantic registers. Human wrote it, or a model wrote it:
+     Instrument Sans. The system measured it: IBM Plex Mono. */
+  --font-human:
+    'Instrument Sans', 'Instrument Sans Fallback', ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, system-ui, sans-serif;
+  --font-machine:
+    'IBM Plex Mono', 'IBM Plex Mono Fallback', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-note: 11px;
+  --text-note--line-height: 16px;
+  --text-note--font-weight: 500;
+  --text-note--letter-spacing: 0.08em;
+
+  --text-meta: 12px;
+  --text-meta--line-height: 18px;
+  --text-meta--letter-spacing: 0.02em;
+
+  --text-micro: 12px;
+  --text-micro--line-height: 18px;
+
+  --text-ui: 13px;
+  --text-ui--line-height: 20px;
+
+  --text-body: 16px;
+  --text-body--line-height: 27px;
+  --text-body--letter-spacing: -0.003em;
+
+  --text-title: 18px;
+  --text-title--line-height: 26px;
+  --text-title--letter-spacing: -0.01em;
+
+  --text-section: 21px;
+  --text-section--line-height: 30px;
+  --text-section--letter-spacing: -0.015em;
+
+  --text-display: 25px;
+  --text-display--line-height: 34px;
+  --text-display--letter-spacing: -0.02em;
+
+  /* Marketing only. The workspace ceiling is --text-display: a landing headline
+     needs more presence than any in-product text, and that is the single
+     documented exception to the scale. See docs/design/language.md §9.2. */
+  /* Fluid: a landing headline has to hold a 1440px viewport without looking
+     like a document heading, and hold a 360px one without breaking mid-word.
+     One token rather than a stack of breakpoint overrides, so the exception
+     stays a single decision. */
+  --text-hero: clamp(34px, 1.6rem + 2.4vw, 58px);
+  --text-hero--line-height: 1.06;
+  --text-hero--letter-spacing: -0.03em;
+
+  /* Radius encodes interactivity: structure is square, controls are rounded.
+     Ceiling is 8px — nothing in NexusAI is 12, 16, 20 or 24px round. */
+  --radius-mark: 3px;
+  --radius-control: 5px;
+  --radius-overlay: 8px;
+
+  --shadow-float: var(--shadow-float-value);
+  --shadow-modal: var(--shadow-modal-value);
+
+  --ease-out: cubic-bezier(0.2, 0, 0.15, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-expand: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}

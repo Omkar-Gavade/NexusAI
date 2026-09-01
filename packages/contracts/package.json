@@ -1,0 +1,11 @@
+{
+  "name": "@nexusai/contracts",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "build": "tsc --noEmit" },
+  "dependencies": { "zod": "^3.25.0" }
+}
