@@ -8,7 +8,6 @@
     "types": ["node"],
     "allowImportingTsExtensions": true,
     "paths": { "@/*": ["./src/*"] },
-    "baseUrl": "."
   },
   "include": ["src", "tests", "vitest.config.ts"]
 }

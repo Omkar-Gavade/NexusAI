@@ -8,10 +8,20 @@ Phase 9 set out to deploy staging. Before choosing a host, the code was read to
 find out what it actually requires. Three constraints turned out to be decided
 already, by the implementation rather than by preference.
 
-**1. The client calls a relative path.** `frontend/src/lib/http.ts` opens with
-`const BASE = '/api'`. There is no build-time API URL; `VITE_API_URL` exists
-only to point the Vite dev-server proxy at `localhost:8080`. A production build
-therefore issues same-origin requests to `/api/*` and nothing else.
+**1. The client calls a relative path by default.** `frontend/src/lib/http.ts`
+resolves `BASE` from `VITE_API_URL` when that is set at build time, and falls
+back to `/api`. Unset — the default — a production build issues same-origin
+requests to `/api/*` and nothing else.
+
+> **Amended.** When this ADR was first written the base was the literal
+> `'/api'` with no build-time override, and the ADR said a separate API origin
+> was impossible. It is now possible to point the client elsewhere. The
+> conclusion below is unchanged, but for the second reason rather than the
+> first: setting `VITE_API_URL` to another origin makes the client work and the
+> **cookies stop working**, because `SameSite=Strict` on the refresh cookie and
+> `Lax` on the access cookie are not sent cross-site. Splitting the origins is
+> therefore a deliberate change to both cookie settings and the CORS
+> configuration, not a build flag on its own.
 
 **2. The cookies assume same-origin.** The access cookie is `SameSite=Lax` and
 the refresh cookie is `SameSite=Strict`, scoped to `Path=/api/auth`. Both work

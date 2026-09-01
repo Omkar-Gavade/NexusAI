@@ -7,7 +7,9 @@ const read = (path: string) =>
 
 const base = read('./base.css');
 const appShell = read('../components/layout/app-shell.tsx');
-const homePage = read('../pages/home/home-page.tsx');
+// The public pages get their frame from the shared marketing layout, so that
+// is where the viewport sizing lives — one definition rather than one per page.
+const marketingLayout = read('../components/marketing/marketing-layout.tsx');
 const authLayout = read('../pages/auth/auth-layout.tsx');
 
 /**
@@ -77,7 +79,7 @@ describe('scroll architecture', () => {
 
   it('sizes the public pages against the viewport, not an ancestor percentage', () => {
     // `min-h-full` resolves to nothing once the ancestor chain has no height.
-    for (const page of [homePage, authLayout]) {
+    for (const page of [marketingLayout, authLayout]) {
       expect(page).toMatch(/min-h-dvh/);
       expect(page).not.toMatch(/min-h-full/);
     }

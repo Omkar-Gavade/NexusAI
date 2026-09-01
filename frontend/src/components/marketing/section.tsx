@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { Rule } from '@/components/ui/rule';
+import { Reveal } from './reveal';
 
 /**
  * Marketing layout primitive.
@@ -58,7 +59,7 @@ export function Section({
               'md:grid md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:gap-16',
           )}
         >
-          <div className={clsx(layout === 'split' && 'md:sticky md:top-24 md:self-start')}>
+          <Reveal className={clsx(layout === 'split' && 'md:sticky md:top-24 md:self-start')}>
             {label && <Rule label={label} className="mb-8" />}
 
             {title && (
@@ -77,12 +78,17 @@ export function Section({
                 {lede}
               </p>
             )}
-          </div>
+          </Reveal>
 
           {children && (
-            <div className={clsx(layout === 'split' ? 'max-md:mt-12' : (title || lede) && 'mt-12')}>
+            // A step behind the heading, so the eye reads the claim before the
+            // diagram that supports it.
+            <Reveal
+              delay={90}
+              className={clsx(layout === 'split' ? 'max-md:mt-12' : (title || lede) && 'mt-12')}
+            >
               {children}
-            </div>
+            </Reveal>
           )}
         </div>
       </MarketingContainer>

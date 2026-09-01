@@ -6,6 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Logo, Wordmark } from '@/components/ui/logo';
 import { routes } from '@/lib/routes';
 import { CtaLink } from './cta-link';
+import { ThemeToggle } from './theme-toggle';
 import { MarketingContainer } from './section';
 
 /**
@@ -13,11 +14,16 @@ import { MarketingContainer } from './section';
  * set traces the argument in order: what it does, what it produces, how you
  * check it, and who it is for.
  */
+/**
+ * Four destinations, each a real page. They were homepage anchors while the
+ * homepage carried every explanation; now that the detail has its own routes,
+ * an anchor would scroll past the thing it names.
+ */
 const LINKS = [
-  { href: '#how-it-works', label: 'How it works' },
-  { href: '#synthesis', label: 'Synthesis' },
-  { href: '#provenance', label: 'Provenance' },
-  { href: '#use-cases', label: 'Use cases' },
+  { href: routes.howItWorks, label: 'How it works' },
+  { href: routes.synthesis, label: 'Synthesis' },
+  { href: routes.useCases, label: 'Use cases' },
+  { href: routes.pricing, label: 'Pricing' },
 ] as const;
 
 export function MarketingNav() {
@@ -45,8 +51,14 @@ export function MarketingNav() {
   return (
     <header
       className={clsx(
-        'sticky top-0 z-(--z-sticky) bg-canvas transition-colors duration-(--duration-instant)',
-        scrolled && 'border-b border-line-subtle',
+        'sticky top-0 z-(--z-sticky) transition-[background-color,border-color,backdrop-filter]',
+        'duration-(--duration-normal)',
+        // Opaque at rest: a blurred bar over nothing is a blur of the page
+        // background, which reads as a rendering artefact rather than a
+        // material. It becomes glass once there is content to sit over.
+        scrolled
+          ? 'border-b border-line-subtle bg-canvas/72 backdrop-blur-xl backdrop-saturate-150'
+          : 'border-b border-transparent bg-canvas',
       )}
     >
       <MarketingContainer>
@@ -59,17 +71,18 @@ export function MarketingNav() {
           <ul className="flex flex-1 items-center gap-1 max-md:hidden">
             {LINKS.map((item) => (
               <li key={item.href}>
-                <a
-                  href={item.href}
+                <Link
+                  to={item.href}
                   className="rounded-control px-2.5 py-1.5 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
                 >
                   {item.label}
-                </a>
+                </Link>
               </li>
             ))}
           </ul>
 
-          <div className="flex items-center gap-2 max-md:hidden">
+          <div className="flex items-center gap-1.5 max-md:hidden">
+            <ThemeToggle />
             <Link
               to={routes.login}
               className="rounded-control px-2.5 py-1.5 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
@@ -82,6 +95,9 @@ export function MarketingNav() {
           </div>
 
           <span className="flex-1 md:hidden" />
+          <div className="md:hidden">
+            <ThemeToggle />
+          </div>
           <IconButton
             className="md:hidden"
             label={menuOpen ? 'Close menu' : 'Open menu'}
@@ -99,13 +115,13 @@ export function MarketingNav() {
             <ul className="flex flex-col py-2">
               {LINKS.map((item) => (
                 <li key={item.href}>
-                  <a
-                    href={item.href}
+                  <Link
+                    to={item.href}
                     onClick={() => setMenuOpen(false)}
                     className="flex min-h-11 items-center rounded-control px-2 text-ui text-ink-2 hover:bg-hover hover:text-ink"
                   >
                     {item.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
               <li className="mt-2 flex gap-2 border-t border-line-subtle pt-3 pb-2">

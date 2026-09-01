@@ -67,6 +67,23 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     font-family: var(--font-human);
+
+    /*
+     * Anchor jumps glide rather than teleport, which is what makes the header
+     * links feel like navigation within one page instead of five separate
+     * loads. `smooth` only affects scrolls the page initiates — a wheel or a
+     * trackpad is untouched, so this cannot make ordinary scrolling feel laggy.
+     *
+     * `scroll-padding-top` keeps a jumped-to heading clear of the sticky bar.
+     */
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
 
   /*
@@ -91,6 +108,39 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* --- Selection ---------------------------------------------------------
+     Selection is the one place the interface uses a warm signal colour. It
+     sits outside the token palette deliberately: it is not a product state,
+     it is the operating system's "you have grabbed this", and it should read
+     identically in both themes rather than shifting with the surface. That is
+     why the value is a literal and not a token — a token would have a light
+     and a dark definition, which is exactly the behaviour being ruled out.
+
+     The foreground is a warm near-black in both themes because #ff9933 is a
+     light colour. Measured against it: white is 2.13:1 and unreadable;
+     #1a1200 is 8.72:1, which clears AAA. Do not "fix" this to white.
+
+     ::selection and ::-moz-selection are written as two separate rules and
+     must stay that way. Grouping them into one selector list would make the
+     whole list invalid in any engine that does not know one of the two, and
+     the rule would be dropped — losing selection styling in the very browser
+     the prefix was added for.
+
+     There must be exactly one of each in the codebase. A second, later
+     ::selection rule at equal specificity silently wins, which is precisely
+     the bug this block replaced: a duplicate further down this file had been
+     overriding the orange with a theme-dependent token. `selection.test.ts`
+     fails the build if a competing rule reappears. */
+  ::selection {
+    background-color: #ff9933;
+    color: #1a1200;
+  }
+
+  ::-moz-selection {
+    background-color: #ff9933;
+    color: #1a1200;
   }
 
   #root {
@@ -154,11 +204,6 @@
   [data-register='machine'] {
     font-family: var(--font-machine);
     font-variant-numeric: tabular-nums;
-  }
-
-  ::selection {
-    background-color: var(--accent-quiet);
-    color: var(--text-primary);
   }
 
   /* --- Focus -------------------------------------------------------------
@@ -295,5 +340,178 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Public-page motion.
+ *
+ * Everything below is opt-in per element and animates only `opacity` and
+ * `transform`, so none of it can cause layout or paint work on scroll. Each
+ * rule states what it is explaining — a diagram that animates a real stage of
+ * the pipeline earns its motion; a shape that moves because movement looks
+ * expensive does not.
+ *
+ * `prefers-reduced-motion` is handled once, at the bottom, by disabling the
+ * animations rather than the elements: the page is fully legible with every
+ * animation removed, because motion is never what makes content visible.
+ * ------------------------------------------------------------------------- */
+
+/* Scroll-linked reveal, driven by IntersectionObserver in `reveal.tsx`. */
+.nx-reveal {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 520ms var(--ease-out),
+    transform 520ms var(--ease-out);
+}
+
+.nx-reveal[data-shown] {
+  opacity: 1;
+  transform: none;
+}
+
+/* A pulse travelling the length of a connector: the request leaving the
+   question, and each response returning to the synthesis. Timed off one
+   variable so lanes can be offset against each other. */
+@keyframes nx-flow {
+  0% {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  22%,
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+.nx-flow {
+  animation: nx-flow 2.8s var(--ease-out) infinite;
+  animation-delay: var(--nx-delay, 0ms);
+}
+
+/* A model's text arriving. Width, not opacity, because the thing being shown
+   is a response accumulating — and it is masked to its own lane so it reads as
+   filling rather than sliding. */
+@keyframes nx-fill {
+  0% {
+    transform: scaleX(0);
+  }
+  55%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.nx-fill {
+  transform-origin: left;
+  animation: nx-fill 2.8s var(--ease-out) infinite;
+  animation-delay: var(--nx-delay, 0ms);
+}
+
+/* The synthesis writing its answer, token by token. Deliberately slower than
+   the fan-out: it starts after the models have returned. */
+/*
+ * The synthesis writing itself.
+ *
+ * The hold at zero is the wait for the models to come back, so it has to
+ * exist — but it was 40% of the cycle, against 10% spent in the completed
+ * state. The diagram sat empty far more often than it showed a finished
+ * answer, which is the opposite of what it is meant to communicate. The
+ * weighting below keeps the sequence (wait, write, rest) and lets the
+ * finished state be the one the eye most often lands on.
+ */
+@keyframes nx-stream {
+  0%,
+  22% {
+    transform: scaleX(0);
+  }
+  55%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.nx-stream {
+  transform-origin: left;
+  animation: nx-stream 2.8s var(--ease-out) infinite;
+  animation-delay: var(--nx-delay, 0ms);
+}
+
+/* A lane that did not answer. It does not pulse — it breathes faintly, so the
+   gap reads as "nothing arrived" rather than "this element is broken". */
+@keyframes nx-idle {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.nx-idle {
+  animation: nx-idle 3.4s ease-in-out infinite;
+}
+
+/* A packet travelling one edge of the orchestration graph. Follows the same
+   `d` string as the visible stroke via `offset-path`, so it cannot drift off
+   its line. Fades at both ends so it reads as motion along a path rather than
+   an object appearing and vanishing. */
+@keyframes nx-particle {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12%,
+  82% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+.nx-particle {
+  offset-rotate: 0deg;
+  animation: nx-particle 3.2s var(--ease-out) infinite;
+}
+
+/*
+ * One switch for the whole page. The animations stop; nothing disappears,
+ * moves, or changes size, because every animated element is already in its
+ * final position and every revealed block is already legible.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .nx-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .nx-flow,
+  .nx-fill,
+  .nx-stream,
+  .nx-idle,
+  .nx-particle {
+    animation: none;
+  }
+
+  /* Parked at the far end of its path rather than at the start: a particle
+     frozen at 0% sits on the question node and reads as a stray dot. */
+  .nx-particle {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+
+  /* Filled rather than mid-animation: a bar frozen at scaleX(0) is invisible. */
+  .nx-fill,
+  .nx-stream {
+    transform: scaleX(1);
   }
 }
