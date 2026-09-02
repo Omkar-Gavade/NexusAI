@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import { Logo, Wordmark } from '@/components/ui/logo';
 import { routes } from '@/lib/routes';
 import { CtaLink } from './cta-link';
+import { HomeLink } from './home-link';
 import { MarketingContainer } from './section';
 
 /**
@@ -33,14 +34,13 @@ export function MarketingFooter() {
     <footer className="border-t border-line-subtle py-10">
       <MarketingContainer>
         <div className="flex flex-wrap items-center gap-x-8 gap-y-5">
-          <Link
-            to={routes.home}
+          <HomeLink
             aria-label="NexusAI home"
             className="flex items-center gap-2 rounded-control max-lg:min-h-11"
           >
             <Logo size={18} className="text-ink-2" />
             <Wordmark />
-          </Link>
+          </HomeLink>
 
           <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {FOOTER_LINKS.map((link) => (

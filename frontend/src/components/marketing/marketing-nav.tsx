@@ -6,6 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Logo, Wordmark } from '@/components/ui/logo';
 import { routes } from '@/lib/routes';
 import { CtaLink } from './cta-link';
+import { HomeLink } from './home-link';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { MarketingContainer } from './section';
 
@@ -63,14 +64,13 @@ export function MarketingNav() {
     >
       <MarketingContainer>
         <nav aria-label="Main" className="flex h-14 items-center gap-6">
-          <Link
-            to={routes.home}
+          <HomeLink
             aria-label="NexusAI home"
             className="flex items-center gap-2 rounded-control max-lg:min-h-11"
           >
             <Logo size={19} className="text-ink-2" />
             <Wordmark />
-          </Link>
+          </HomeLink>
 
           <ul className="flex flex-1 items-center gap-1 max-md:hidden">
             {LINKS.map((item) => (

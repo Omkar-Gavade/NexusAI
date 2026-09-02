@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
 import { isApiError } from '@/lib/http';
+import { routes } from '@/lib/routes';
 import * as api from './api';
 
 export const sessionKey = ['session'] as const;
@@ -72,10 +74,29 @@ export function useChangePassword() {
 
 export function useLogout() {
   const client = useQueryClient();
+  const navigate = useNavigate();
+
   return useMutation({
     mutationFn: api.logout,
-    // Cached conversations and messages belong to the user who just left.
-    onSettled: () => client.clear(),
+    onSettled: () => {
+      /*
+       * Home, and the navigation happens here rather than at the three call
+       * sites so none of them can forget it.
+       *
+       * Order matters. Clearing the cache drops the session query, which
+       * re-renders `RequireAuth` with no user — and it would send the person
+       * to `/login?next=/app/chat/<the conversation they just signed out of>`
+       * before this ran. Signing out landed on a sign-in form pre-aimed back
+       * at the session that was just ended.
+       *
+       * `replace` so Back does not return into a workspace there is no longer
+       * a session for.
+       */
+      navigate(routes.home, { replace: true });
+
+      // Cached conversations and messages belong to the user who just left.
+      client.clear();
+    },
   });
 }
 
