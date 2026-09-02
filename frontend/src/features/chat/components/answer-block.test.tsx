@@ -53,6 +53,12 @@ describe('AnswerBlock', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('says WORKING while orchestrating, before any answer text exists', () => {
+    setup({ streaming: true, text: '', latencyMs: null, agreement: null });
+    expect(screen.getByText(/WORKING/)).toBeInTheDocument();
+    expect(screen.queryByText(/ANSWERING/)).toBeNull();
+  });
+
   it('offers no comparison for a single-model answer', () => {
     setup({ slots: [slot({ id: 'alpha' })] });
     expect(screen.queryByRole('button', { name: /model-by-model comparison/i })).not.toBeInTheDocument();
@@ -62,7 +68,11 @@ describe('AnswerBlock', () => {
     setup({ streaming: true, latencyMs: null, agreement: null });
     expect(screen.queryByRole('button', { name: /model-by-model comparison/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /copy response/i })).not.toBeInTheDocument();
-    expect(screen.getByText('WORKING')).toBeInTheDocument();
+    // Text is already arriving, so the state is ANSWERING rather than the
+    // pre-answer WORKING. The two are mutually exclusive: WORKING means the
+    // orchestration is running with nothing to read yet.
+    expect(screen.getByText(/ANSWERING/)).toBeInTheDocument();
+    expect(screen.queryByText(/WORKING/)).toBeNull();
   });
 
   it('marks the region busy while streaming', () => {

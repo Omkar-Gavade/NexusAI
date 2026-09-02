@@ -406,9 +406,18 @@ function Metadata({
   // product's name for it and "GPT-4O" is not.
   if (soleModel) parts.push(soleModel);
   else if (view.agreement) parts.push(agreementSentence(view.agreement));
-  else if (view.streaming) parts.push('WORKING');
+  else if (view.streaming && view.text.length === 0) parts.push('WORKING');
 
-  if (view.streaming && soleModel) parts.push('ANSWERING');
+  /*
+   * "Still writing", in both modes.
+   *
+   * The orchestration status carries the fan-out phase, but it stands down the
+   * moment real text exists — so once a synthesised answer starts streaming the
+   * metadata read only "THREE MODELS", with nothing saying the answer was still
+   * arriving. A single chosen model said ANSWERING from the first frame,
+   * because there is no fan-out phase to report for it.
+   */
+  if (view.streaming && (soleModel || view.text.length > 0)) parts.push('ANSWERING');
 
   /*
    * Synthesised, or answered directly.
