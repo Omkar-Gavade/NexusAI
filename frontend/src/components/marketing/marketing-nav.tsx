@@ -6,7 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Logo, Wordmark } from '@/components/ui/logo';
 import { routes } from '@/lib/routes';
 import { CtaLink } from './cta-link';
-import { ThemeToggle } from './theme-toggle';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { MarketingContainer } from './section';
 
 /**

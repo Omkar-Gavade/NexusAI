@@ -1,30 +1,38 @@
+import { Logo } from '@/components/ui/logo';
+
 /**
  * The empty conversation.
  *
- * One line, positioned where the first answer will appear. No suggestion
- * buttons, no explanation of what the product does, no illustration: a person
- * who has signed in and opened a conversation has already been sold, and a
- * workspace that pitches itself every time it is empty reads as a landing page
- * that failed to log you in.
+ * Positioned low in the thread rather than centred in it, so the eye lands here
+ * and continues down to the composer, which is the actual next action. A
+ * centred block treats the empty state as the destination.
  *
- * The composer directly below is the call to action, so nothing here competes
- * with it. What this space is for is telling the reader the application is
- * ready — and, when it is not, why.
+ * No suggestion wall, no illustration, no hero. Someone who has signed in and
+ * opened a conversation has already been sold; a workspace that re-pitches
+ * itself every time it is empty reads as a landing page that failed to log you
+ * in. What this space owes the reader is that the product is ready — and, when
+ * it is not, why.
  */
 export function EmptyConversation({ disabled }: { disabled: boolean }) {
   return (
-    <div className="pt-[10vh]">
-      <p className="text-section font-[550] tracking-[-0.01em] text-ink">
+    <div className="flex min-h-[46vh] flex-col justify-end pb-2">
+      <Logo size={22} className="mb-4 text-ink-3" aria-hidden="true" />
+
+      <h2 className="text-section font-[550] tracking-[-0.01em] text-ink">
         What can I help you with?
+      </h2>
+
+      <p className="mt-2 max-w-[52ch] text-body text-ink-2">
+        Ask anything. NexusAI puts your question to several models and reconciles what comes
+        back into one answer.
       </p>
 
       {disabled && (
-        // Stated plainly rather than left for the user to discover by typing a
-        // question and watching it fail. Never claims which model is missing —
-        // availability is per deployment and the workspace reports it per model.
-        <p className="mt-3 max-w-[52ch] text-ui text-ink-2">
-          No models are currently available. This deployment has no reachable provider
-          configured, so a question cannot be answered right now.
+        // Stated rather than left for the reader to discover by typing a
+        // question and watching it fail. Never names a model: availability is
+        // per deployment and the workspace reports it per model.
+        <p className="mt-4 max-w-[52ch] text-ui text-ink-3">
+          No models are currently available, so a question cannot be answered right now.
         </p>
       )}
     </div>

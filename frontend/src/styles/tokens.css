@@ -105,6 +105,11 @@
 :root {
   --measure-answer: 68ch;
   --measure-wide: 84ch;
+  /* The conversation column. Wider than the answer measure on purpose: the
+     answer keeps its 68ch line length, and the extra width is what the user's
+     message is offset into. One column at 68ch put both speakers on the same
+     axis and left most of a wide display empty. */
+  --measure-conversation: 1080px;
 
   --sidebar-width: 264px;
   /* Collapsed, the sidebar becomes a rail rather than disappearing: the

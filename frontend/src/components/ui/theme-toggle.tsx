@@ -1,8 +1,9 @@
 import { Moon, Sun } from 'lucide-react';
 import { useThemeStore } from '@/stores/theme-store';
+import { useAccountTheme } from '@/features/auth/use-account-theme';
 
 /**
- * Light/dark control for the public pages.
+ * Light/dark control, shared by the marketing header and the workspace.
  *
  * Two states, not three. The workspace's settings dialog offers `system` as
  * well, which is the right default and the right place for it — but a header
@@ -15,7 +16,10 @@ import { useThemeStore } from '@/stores/theme-store';
  */
 export function ThemeToggle() {
   const resolved = useThemeStore((s) => s.resolved);
-  const setPreference = useThemeStore((s) => s.setPreference);
+  // Writes locally and, when there is a session, through to the account — so
+  // the preference follows the user rather than the browser. Signed out, on
+  // the marketing pages, it is local only.
+  const { setTheme } = useAccountTheme();
 
   const next = resolved === 'dark' ? 'light' : 'dark';
   const Icon = resolved === 'dark' ? Sun : Moon;
@@ -23,7 +27,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      onClick={() => setPreference(next)}
+      onClick={() => setTheme(next)}
       // The label names the destination, not the current state: a control
       // announced as "dark theme" is ambiguous about what pressing it does.
       aria-label={`Switch to ${next} theme`}

@@ -81,7 +81,7 @@ export function Composer({
           submit();
         }}
         aria-label="Message composer"
-        className="mx-auto w-full max-w-(--measure-answer)"
+        className="mx-auto w-full max-w-(--measure-conversation)"
       >
         <div
           className={clsx(

@@ -128,7 +128,7 @@ export function ConversationPage() {
 
       <div className="relative min-h-0 flex-1">
         <div ref={scroller} className="h-full overflow-y-auto">
-          <div className="mx-auto w-full max-w-(--measure-answer) px-(--gutter) pb-8 pt-14 max-lg:px-4">
+          <div className="mx-auto w-full max-w-(--measure-conversation) px-(--gutter) pb-8 pt-14 max-lg:px-4">
             {showEmpty ? (
               <EmptyConversation disabled={noModels} />
             ) : (

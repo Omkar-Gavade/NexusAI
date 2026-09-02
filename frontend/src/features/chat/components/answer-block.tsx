@@ -75,7 +75,11 @@ export function AnswerBlock({
 
   return (
     <article
-      className="group/turn flex flex-col gap-3 motion-safe:animate-[nx-answer-in_150ms_var(--ease-out)]"
+      /* Capped at the reading measure plus the rail, and left-aligned in a
+         wider column. The answer is a document and its line length does not
+         grow with the display; the space to its right is what the reader's own
+         messages are offset into. */
+      className="group/turn flex max-w-[calc(var(--measure-answer)+var(--rail-width)+var(--rail-gutter))] flex-col gap-3 motion-safe:animate-[nx-answer-in_150ms_var(--ease-out)]"
       aria-busy={streaming || undefined}
     >
       <div className="flex gap-(--rail-gutter) max-lg:flex-col max-lg:gap-3">
