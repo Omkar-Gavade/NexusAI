@@ -50,9 +50,16 @@ describe('useStreamedText', () => {
     act(() => void vi.advanceTimersByTime(120));
     expect(result.current).toBe('first');
 
+    // Word-aligned: "second" has no boundary after it yet, so it is published
+    // on the next tick or by the exact-text path at completion. Nothing is
+    // delayed — the withheld fragment is only what arrived since the last tick.
     rerender({ text: 'first second', streaming: true });
     act(() => void vi.advanceTimersByTime(120));
-    expect(result.current).toBe('first second');
+    expect(result.current).toBe('first ');
+
+    rerender({ text: 'first second third', streaming: true });
+    act(() => void vi.advanceTimersByTime(120));
+    expect(result.current).toBe('first second ');
   });
 
   it('rebuilds far less often than the delta rate', () => {
@@ -72,5 +79,55 @@ describe('useStreamedText', () => {
     // ~60 frames over ~960ms is at most ten ticks, not sixty.
     expect(seen.size).toBeLessThanOrEqual(12);
     expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+describe('word-oriented release', () => {
+  it('never shows a half-typed word mid-stream', () => {
+    const { result } = renderHook(
+      ({ text, streaming }) => useStreamedText(text, streaming),
+      { initialProps: { text: 'The capital of Ja', streaming: true } },
+    );
+    act(() => void vi.advanceTimersByTime(120));
+    expect(result.current).toBe('The capital of ');
+    expect(result.current).not.toMatch(/Ja$/);
+  });
+
+  it('does not hold back the very first word waiting for a second', () => {
+    const { result } = renderHook(() => useStreamedText('The', true));
+    expect(result.current).toBe('The');
+  });
+
+  it('publishes the exact text the instant streaming stops, boundary or not', () => {
+    // The guarantee that makes word alignment safe: completion bypasses it.
+    const { result, rerender } = renderHook(
+      ({ text, streaming }) => useStreamedText(text, streaming),
+      { initialProps: { text: 'Tokyo is the capital of Japa', streaming: true } },
+    );
+    act(() => void vi.advanceTimersByTime(120));
+    expect(result.current).toBe('Tokyo is the capital of ');
+
+    rerender({ text: 'Tokyo is the capital of Japan.', streaming: false });
+    expect(result.current).toBe('Tokyo is the capital of Japan.');
+  });
+
+  it('loses nothing across fragmented provider deltas', () => {
+    const fragments = ['The cap', 'ital of ', 'Japan ', 'is **To', 'kyo**.'];
+    let acc = '';
+    const { result, rerender } = renderHook(
+      ({ text, streaming }) => useStreamedText(text, streaming),
+      { initialProps: { text: '', streaming: true } },
+    );
+
+    for (const f of fragments) {
+      acc += f;
+      rerender({ text: acc, streaming: true });
+      act(() => void vi.advanceTimersByTime(120));
+      // Whatever is on screen is always a prefix of what has arrived.
+      expect(acc.startsWith(result.current)).toBe(true);
+    }
+
+    rerender({ text: acc, streaming: false });
+    expect(result.current).toBe('The capital of Japan is **Tokyo**.');
   });
 });

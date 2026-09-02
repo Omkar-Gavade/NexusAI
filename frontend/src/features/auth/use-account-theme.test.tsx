@@ -13,6 +13,7 @@ vi.mock('./api', () => ({
   register: vi.fn(),
   logout: vi.fn(),
   updateProfile: vi.fn(),
+  changePassword: vi.fn(),
 }));
 const api = await import('./api');
 

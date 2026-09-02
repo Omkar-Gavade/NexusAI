@@ -22,6 +22,25 @@ const REPARSE_INTERVAL_MS = 100;
  * never a stale snapshot. The finished answer is always complete and exact, so
  * a dropped timer can delay a frame but can never truncate a response.
  */
+/**
+ * The text up to the last completed word.
+ *
+ * Providers do not break on word boundaries — a delta routinely ends mid-word
+ * — so rendering the raw buffer shows "the capital of Ja" for a frame before it
+ * becomes "Japan". Publishing to the last boundary instead makes the answer
+ * arrive a word at a time, which is what reading it feels like.
+ *
+ * This is not a typing effect and it delays nothing: the withheld fragment is
+ * whatever arrived since the previous tick, and it is published on the next one
+ * — or immediately, by the exact-text path, when the stream ends. If nothing
+ * has completed yet the whole buffer is returned, so the first word is never
+ * held back waiting for a second.
+ */
+function toWordBoundary(text: string): string {
+  const lastSpace = text.search(/\s\S*$/);
+  return lastSpace > 0 ? text.slice(0, lastSpace + 1) : text;
+}
+
 export function useStreamedText(text: string, streaming: boolean): string {
   const [shown, setShown] = useState(text);
   const latest = useRef(text);
@@ -55,5 +74,6 @@ export function useStreamedText(text: string, streaming: boolean): string {
     [],
   );
 
-  return streaming ? shown : text;
+  // Exact and complete the moment streaming stops; word-aligned before that.
+  return streaming ? toWordBoundary(shown) : text;
 }

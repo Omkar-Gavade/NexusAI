@@ -4,6 +4,7 @@ import {
   RegisterRequest,
   UpdateProfileRequest,
   type User,
+  ChangePasswordRequest,
 } from '@nexusai/contracts';
 import type { Config } from '../../config/env.ts';
 import type { AuthService, IssuedSession } from '../../application/auth-service.ts';
@@ -97,6 +98,24 @@ export function registerAuthRoutes(
     clearCookies(reply);
     return reply.status(204).send();
   });
+
+  app.post(
+    '/api/auth/password',
+    { preHandler: deps.authenticate as never },
+    async (request, reply) => {
+      const user = requireUser(request);
+      const body = ChangePasswordRequest.parse(request.body);
+
+      // Every existing refresh family is revoked, so the caller is re-issued a
+      // session here rather than being signed out of the tab they changed it in.
+      const session = await deps.auth.changePassword(user.id, body);
+      issueCookies(reply, session);
+
+      // Nothing about the credential comes back — not the hash, not an echo of
+      // either password.
+      return reply.status(204).send();
+    },
+  );
 
   app.get('/api/auth/me', { preHandler: deps.authenticate as never }, async (request, reply) => {
     const user = requireUser(request);

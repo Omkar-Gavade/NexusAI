@@ -13,6 +13,7 @@ export {
   RoutingMode,
   SessionResponse,
   ThemePreference,
+  ChangePasswordRequest,
   UpdateProfileRequest,
   User,
   UserPreferences,

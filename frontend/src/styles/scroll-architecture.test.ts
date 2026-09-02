@@ -85,3 +85,46 @@ describe('scroll architecture', () => {
     }
   });
 });
+
+/**
+ * Opening a dialog must not move the workspace.
+ *
+ * The classic version of this bug is a modal that locks body scrolling: the
+ * document scrollbar disappears, the page widens by its width, and everything
+ * shifts sideways — or, if the page was scrolled, upward. Measured in a real
+ * browser at 1440, opening the settings dialog moved nothing: header top, main
+ * top, main left and document width were identical before, during and after.
+ *
+ * It cannot move because of two properties, and these are what the assertions
+ * below protect. The shell owns a definite viewport height with its own
+ * overflow, so the document never scrolls and there is no scrollbar to remove.
+ * And the dialog is a native `<dialog>` opened with `showModal()`, so it needs
+ * no scroll-lock of its own — nothing in it writes to `body`.
+ */
+const dialog = read('../components/ui/dialog.tsx');
+
+describe('opening a dialog does not move the shell', () => {
+  it('keeps the workspace viewport lock on the shell, not on the document', () => {
+    const shell = ruleFor(appShell, 'div');
+    expect(appShell).toMatch(/h-dvh/);
+    expect(appShell).toMatch(/overflow-hidden/);
+    expect(shell).not.toMatch(/100vh/);
+  });
+
+  it('does not compensate for a scrollbar, because there is none to compensate for', () => {
+    // A padding-right compensation would itself be a shift, and would be a sign
+    // the document had started scrolling.
+    expect(dialog).not.toMatch(/scrollbar|paddingRight|padding-right/i);
+  });
+
+  it('leaves document and body styles alone', () => {
+    // No `document.body.style`, no overflow toggling: the native modal handles
+    // inertness, and the shell already prevents document scroll.
+    expect(dialog).not.toMatch(/document\.body\.style|documentElement\.style/);
+    expect(dialog).not.toMatch(/overflow\s*=\s*['"]hidden/);
+  });
+
+  it('uses the native modal rather than a hand-rolled overlay', () => {
+    expect(dialog).toMatch(/showModal\(\)/);
+  });
+});

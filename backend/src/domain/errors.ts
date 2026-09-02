@@ -65,6 +65,10 @@ export const Errors = {
   sessionRevoked: () => new AppError('SESSION_REVOKED', m.SESSION_REVOKED, { status: 401 }),
   invalidCredentials: () =>
     new AppError('INVALID_CREDENTIALS', m.INVALID_CREDENTIALS, { status: 401 }),
+  /** The new password is the one already set. Not a credential failure. */
+  passwordUnchanged: () =>
+    new AppError('PASSWORD_UNCHANGED', m.PASSWORD_UNCHANGED, { status: 409 }),
+
   emailTaken: () => new AppError('EMAIL_TAKEN', m.EMAIL_TAKEN, { status: 409 }),
 
   // Ownership failures are 404, never 403: a 403 confirms the row exists and

@@ -15,6 +15,7 @@ vi.mock('@/features/auth/api', () => ({
   register: vi.fn(),
   logout: vi.fn(),
   updateProfile: vi.fn().mockResolvedValue(undefined),
+  changePassword: vi.fn(),
 }));
 vi.mock('@/features/conversations/use-conversations', () => ({
   useDeleteConversation: () => ({ mutate: vi.fn(), isPending: false }),

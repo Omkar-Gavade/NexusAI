@@ -4,6 +4,7 @@ import type { RoutingMode, ThemePreference } from '@nexusai/contracts';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Rule } from '@/components/ui/rule';
+import { ChangePasswordForm } from './change-password-form';
 import { useLogout, useSession, useUpdateProfile } from '@/features/auth/use-session';
 import { useAccountTheme } from '@/features/auth/use-account-theme';
 
@@ -105,6 +106,11 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
               That preference could not be saved. It is unchanged.
             </p>
           )}
+        </section>
+
+        <section>
+          <Rule label="SECURITY" className="mb-3" />
+          <ChangePasswordForm />
         </section>
 
         <section>

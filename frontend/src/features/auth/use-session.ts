@@ -56,6 +56,20 @@ export function useUpdateProfile() {
   });
 }
 
+/**
+ * Changing the password.
+ *
+ * The server revokes every other refresh family and re-issues this caller's
+ * session, so nothing here needs to sign the user out or refetch identity —
+ * the cookies on the response are already the new ones.
+ */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: api.changePassword,
+    onError: () => undefined,
+  });
+}
+
 export function useLogout() {
   const client = useQueryClient();
   return useMutation({

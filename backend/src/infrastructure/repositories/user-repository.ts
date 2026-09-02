@@ -35,7 +35,7 @@ export class UserRepository {
 
   async update(
     userId: string,
-    patch: { displayName?: string; preferences?: UserPreferences },
+    patch: { displayName?: string; preferences?: UserPreferences; passwordHash?: string },
   ): Promise<UserDoc | null> {
     return this.users.findOneAndUpdate(
       { _id: new ObjectId(userId) },

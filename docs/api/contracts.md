@@ -69,8 +69,28 @@ without a session also returns `204`, because "make me logged out" has succeeded
 
 #### `PATCH /api/auth/me`
 
-`{ displayName?, preferences? }` → `200 { user }`. The only mutable profile surface in MVP. Email
-and password changes are out of scope and their absence is deliberate, not an oversight.
+`{ displayName?, preferences? }` → `200 { user }`. Email changes remain out of scope and their
+absence is deliberate, not an oversight.
+
+#### `POST /api/auth/password`
+
+`{ currentPassword, newPassword }` → `204`. Authenticated.
+
+The current password is verified rather than trusted from the session: a session can be a borrowed
+laptop, and re-authentication is what makes this a security action rather than a settings edit.
+`401 INVALID_CREDENTIALS` if it is wrong, `409 PASSWORD_UNCHANGED` if the new password is the one
+already set, `400 VALIDATION_ERROR` below `PASSWORD_MIN`.
+
+Confirmation is not part of the request. It catches a typo while typing, which is a property of the
+form, not of the credential.
+
+**Session behaviour.** Every refresh family for the user is revoked — that is the point of changing
+a password, since anyone holding a stolen refresh token loses it. The caller is then re-issued a
+session on the same response, so the tab that made the change is not signed out by its own action.
+Access tokens already issued stay valid until they expire, the same stateless trade-off `logout`
+makes, bounded by `ACCESS_TOKEN_TTL_SECONDS`.
+
+The response body is empty. Neither password nor the hash is ever returned or logged.
 
 ### 35.3 Models
 

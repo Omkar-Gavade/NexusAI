@@ -113,6 +113,45 @@ export class AuthService {
   }
 
   /** Takes the contract type directly, so the service and the wire cannot drift. */
+  /**
+   * Change the password of the signed-in user.
+   *
+   * The current password is verified rather than trusted from the session: a
+   * session can be a borrowed laptop, and re-authentication is what makes this
+   * a security action rather than a settings edit.
+   *
+   * Every refresh family for the user is then revoked, which is the point of
+   * changing a password — anyone holding a stolen refresh token loses it. The
+   * caller is immediately re-issued a session so the person who made the change
+   * is not signed out of the tab they made it in. Access tokens already issued
+   * remain valid until they expire, which is the same stateless trade-off
+   * `logout` makes and is documented as such.
+   */
+  async changePassword(
+    userId: string,
+    input: { currentPassword: string; newPassword: string },
+  ): Promise<IssuedSession> {
+    const user = await this.deps.users.findById(userId);
+    if (!user) throw Errors.unauthenticated();
+
+    if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
+      throw Errors.invalidCredentials();
+    }
+
+    // Re-using the current password would revoke every session and change
+    // nothing, which is a worse outcome than refusing.
+    if (await verifyPassword(user.passwordHash, input.newPassword)) {
+      throw Errors.passwordUnchanged();
+    }
+
+    await this.deps.users.update(userId, {
+      passwordHash: await hashPassword(input.newPassword),
+    });
+
+    await this.deps.sessions.revokeAllForUser(userId);
+    return this.issue(userId);
+  }
+
   async updateProfile(userId: string, patch: UpdateProfileRequest): Promise<User> {
     const current = await this.deps.users.findById(userId);
     if (!current) throw Errors.unauthenticated();

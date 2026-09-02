@@ -2,6 +2,7 @@ import {
   SessionResponse,
   type LoginRequest,
   type RegisterRequest,
+  type ChangePasswordRequest,
   type UpdateProfileRequest,
 } from '@nexusai/contracts';
 import { empty, json } from '@/lib/http';
@@ -18,3 +19,6 @@ export const logout = () => empty('/auth/logout', { method: 'POST' });
 
 export const updateProfile = (body: UpdateProfileRequest) =>
   json('/auth/me', SessionResponse, { method: 'PATCH', body });
+
+export const changePassword = (body: ChangePasswordRequest) =>
+  empty('/auth/password', { method: 'POST', body });

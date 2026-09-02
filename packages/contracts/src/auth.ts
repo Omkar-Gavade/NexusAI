@@ -58,6 +58,20 @@ export const LoginRequest = z.object({
 });
 export type LoginRequest = z.infer<typeof LoginRequest>;
 
+/**
+ * Changing a password.
+ *
+ * The confirmation field is deliberately absent: it exists to catch a typo
+ * while typing and is a property of the form, not of the request. Sending it
+ * would put a third copy of the new password on the wire for the server to
+ * compare against itself.
+ */
+export const ChangePasswordRequest = z.object({
+  currentPassword: z.string().min(1).max(PASSWORD_MAX),
+  newPassword: z.string().min(PASSWORD_MIN).max(PASSWORD_MAX),
+});
+export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequest>;
+
 export const UpdateProfileRequest = z.object({
   displayName: z.string().trim().min(1).max(60).optional(),
   preferences: UserPreferences.partial().optional(),

@@ -310,7 +310,10 @@ describe('streaming is announced', () => {
     const { container } = show({ text: 'The capital of Japan is', streaming: true });
     const live = container.querySelector('[aria-live="polite"]');
     expect(live).not.toBeNull();
-    expect(live?.textContent).toContain('The capital of Japan is');
+    // Word-aligned: the trailing partial word is withheld until the next tick
+    // or until the stream ends, so the live region shows completed words only.
+    expect(live?.textContent).toContain('The capital of Japan');
+    expect(live?.textContent).not.toMatch(/\bi$/);
     expect(live?.getAttribute('aria-busy')).toBe('true');
   });
 
