@@ -181,3 +181,32 @@ describe('synthesist selection', () => {
     expect(o.synthesist).not.toBeNull();
   }, 30_000);
 });
+
+describe('an all-failed turn reports what actually happened', () => {
+  it('names the single chosen model rather than blaming synthesis', async () => {
+    // Observed live: an explicitly selected model failed and the user was told
+    // "the individual responses arrived, but couldn't be reconciled" — false on
+    // both counts. Nothing arrived, and synthesis never ran.
+    h.testAdapter.reset();
+    h.testAdapter.setDefault(fail);
+
+    const o = await turn({ mode: 'manual', modelId: 'test-gamma' });
+
+    expect(o.error).not.toBeNull();
+    expect(o.error?.code).toBe('MODEL_UNAVAILABLE');
+    expect(o.error?.message).toMatch(/Test Gamma/);
+    expect(o.error?.message).not.toMatch(/reconcile|synthesis/i);
+  }, 30_000);
+
+  it('does not name a model when several were planned and all failed', async () => {
+    // Listing every provider that failed is operator detail; the reader's next
+    // move is the same either way.
+    h.testAdapter.reset();
+    h.testAdapter.setDefault(fail);
+
+    const o = await turn();
+
+    expect(o.error?.code).toBe('PROVIDER_UNAVAILABLE');
+    expect(o.error?.message).not.toMatch(/reconcile/i);
+  }, 30_000);
+});

@@ -137,7 +137,9 @@ describe('model failure matrix', () => {
     const terminal = events.at(-1)!;
 
     expect(terminal.type).toBe('error');
-    expect(terminal.code).toBe('SYNTHESIS_FAILED');
+    // See failure-matrix: an all-failed turn is a provider failure, not a
+    // synthesis failure, and must not tell the user responses arrived.
+    expect(terminal.code).toBe('PROVIDER_UNAVAILABLE');
     expect(events.some((e) => e.type === 'delta')).toBe(false);
   });
 

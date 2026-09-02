@@ -114,7 +114,9 @@ describe('failure matrix', () => {
     h.testAdapter.setDefault({ kind: 'fail', error: Errors.providerError({}) });
 
     const o = await turn();
-    expect(o.error?.code).toBe('SYNTHESIS_FAILED');
+    // Not SYNTHESIS_FAILED: synthesis never ran, and that code's message
+    // claims responses arrived and could not be reconciled. Nothing arrived.
+    expect(o.error?.code).toBe('PROVIDER_UNAVAILABLE');
     expect(o.answer).toBe('');
   }, 30_000);
 
@@ -123,7 +125,9 @@ describe('failure matrix', () => {
     h.testAdapter.setDefault({ kind: 'empty' });
 
     const o = await turn();
-    expect(o.error?.code).toBe('SYNTHESIS_FAILED');
+    // Not SYNTHESIS_FAILED: synthesis never ran, and that code's message
+    // claims responses arrived and could not be reconciled. Nothing arrived.
+    expect(o.error?.code).toBe('PROVIDER_UNAVAILABLE');
     expect(o.answer).toBe('');
   }, 30_000);
 

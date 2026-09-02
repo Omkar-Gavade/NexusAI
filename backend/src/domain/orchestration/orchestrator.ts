@@ -288,7 +288,21 @@ export class ChatOrchestrator {
         startedAt,
         firstTokenMs: null,
       });
-      throw Errors.synthesisFailed({ reason: 'no model returned a usable response' });
+      /*
+       * Not a synthesis failure — synthesis never ran. `SYNTHESIS_FAILED`
+       * carries the message "the individual responses arrived, but couldn't be
+       * reconciled", which is false here: nothing arrived. Shown to a user who
+       * had explicitly picked one model, it also implied an orchestration they
+       * never asked for.
+       *
+       * A single planned model is named, because the reader chose it. Several
+       * planned models stay unnamed: listing every provider that failed is
+       * operator detail, and the user's next move is the same either way.
+       */
+      const only = plan.length === 1 ? plan[0] : undefined;
+      throw only
+        ? Errors.modelUnavailable(only.displayName, { reason: 'no usable response' })
+        : Errors.providerUnavailable({ reason: 'no model returned a usable response' });
     }
 
     // The synthesis stage is a single point of failure for a turn whose models
