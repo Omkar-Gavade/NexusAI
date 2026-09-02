@@ -282,3 +282,41 @@ describe('model identity in provenance', () => {
     expect(screen.queryByText(/ANSWERED DIRECTLY/i)).toBeNull();
   });
 });
+
+describe('streaming is announced', () => {
+  const base = {
+    slots: [] as ModelSlot[],
+    agreement: null,
+    sources: [],
+    synthesisModel: null,
+    latencyMs: null,
+    cancelled: false,
+    error: null,
+  };
+
+  function show(over: Record<string, unknown>) {
+    return render(
+      <AnswerBlock
+        view={{ ...base, text: '', streaming: false, ...over } as never}
+        onRegenerate={() => undefined}
+        onRetryModel={() => undefined}
+      />,
+    );
+  }
+
+  it('marks the answer region live while it is being written', () => {
+    // Without this a screen reader is silent through the only part of the
+    // interaction that is actually happening.
+    const { container } = show({ text: 'The capital of Japan is', streaming: true });
+    const live = container.querySelector('[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live?.textContent).toContain('The capital of Japan is');
+    expect(live?.getAttribute('aria-busy')).toBe('true');
+  });
+
+  it('stops announcing once the answer has settled', () => {
+    // A finished answer must not be re-read on every later re-render.
+    const { container } = show({ text: 'The capital of Japan is Tokyo.', streaming: false });
+    expect(container.querySelector('[aria-live="polite"]')).toBeNull();
+  });
+});

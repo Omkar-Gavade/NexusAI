@@ -111,10 +111,23 @@ export function AnswerBlock({
               {view.error?.message}
             </Alert>
           ) : (
-            <>
+            <div
+              /*
+               * Announced while it is being written, and only then.
+               *
+               * A screen reader otherwise gets silence during the one part of
+               * the interaction that is actually happening. `polite` queues
+               * rather than interrupts, and the markdown re-parse is already
+               * throttled to ~10Hz, so this does not turn into a token-by-token
+               * announcement. The attribute is dropped once the answer settles
+               * so the finished text is not re-read on every later re-render.
+               */
+              aria-live={streaming ? 'polite' : undefined}
+              aria-busy={streaming || undefined}
+            >
               <Markdown content={body} />
               {streaming && <span className="md-caret" aria-hidden="true" />}
-            </>
+            </div>
           )}
 
           {/* A partial answer is retained, never discarded — the reader already
