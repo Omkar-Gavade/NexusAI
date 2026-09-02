@@ -94,7 +94,33 @@ export function ConversationPage() {
   // forever — so this has to key off whether a conversation exists at all,
   // not off the query status.
   const loadingHistory = conversationId !== null && messages.isPending;
-  const showEmpty = !pending && !history?.length && !loadingHistory && !messages.isError;
+
+  /**
+   * Who owns the turn that was just streamed: the stream, or history.
+   *
+   * The page renders persisted history *and* the in-flight optimistic turn.
+   * Nothing handed ownership from one to the other, and the optimistic turn was
+   * only cleared when `conversationId` changed — which happens on the first
+   * message of a new conversation (null → id) and never again. So from the
+   * second message onward, the moment the refetch landed the same exchange was
+   * on screen twice.
+   *
+   * The server tells us the id it persisted, in the `complete` event. Once that
+   * id appears in history, history is authoritative and the optimistic copy
+   * stands down. Matching on the id rather than on "the stream finished" is
+   * what makes this exact: there is no window where both are shown and none
+   * where neither is.
+   *
+   * Deliberately derived during render rather than cleared in an effect. If a
+   * later refetch ever came back without the message, the optimistic turn
+   * reappears instead of the answer vanishing — the failure mode points at
+   * showing the reader too much, never too little.
+   */
+  const settled =
+    state.messageId !== null && (history?.some((m) => m.id === state.messageId) ?? false);
+  const showPendingTurn = pending !== null && !settled;
+
+  const showEmpty = !showPendingTurn && !history?.length && !loadingHistory && !messages.isError;
 
   return (
     <>
@@ -104,7 +130,7 @@ export function ConversationPage() {
         <div ref={scroller} className="h-full overflow-y-auto">
           <div className="mx-auto w-full max-w-(--measure-answer) px-(--gutter) pb-8 pt-14 max-lg:px-4">
             {showEmpty ? (
-              <EmptyConversation onPick={onSend} disabled={noModels} />
+              <EmptyConversation disabled={noModels} />
             ) : (
               <div className="flex flex-col gap-8">
                 <MessageList
@@ -117,7 +143,7 @@ export function ConversationPage() {
 
                 {/* The in-flight turn. Optimistic on the user side only — the
                     answer is whatever the server actually sends. */}
-                {pending && (
+                {showPendingTurn && pending && (
                   <div className="flex flex-col gap-8">
                     <UserMessage content={pending.prompt} />
                     {state.phase !== 'idle' && (
@@ -134,7 +160,9 @@ export function ConversationPage() {
           </div>
         </div>
 
-        {!atBottom && (history?.length || pending) ? <JumpToLatest onClick={jumpToLatest} /> : null}
+        {!atBottom && (history?.length || showPendingTurn) ? (
+          <JumpToLatest onClick={jumpToLatest} />
+        ) : null}
       </div>
 
       <Composer

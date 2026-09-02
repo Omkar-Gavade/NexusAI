@@ -35,6 +35,27 @@ export function useRegister() {
   });
 }
 
+/**
+ * Writes a preference back to the account.
+ *
+ * `PATCH /api/auth/me` has been implemented and tested on the server since the
+ * beginning and had no caller, which is why `routingMode` could only ever hold
+ * the value assigned at registration. The response is the updated session, so
+ * it replaces the cache directly rather than triggering a refetch.
+ */
+export function useUpdateProfile() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.updateProfile,
+    onSuccess: (data) => client.setQueryData(sessionKey, data),
+    // A failed save is surfaced by the settings dialog through `isError`, and
+    // the cached session is left holding the value the server still has. The
+    // handler is declared so the rejection is explicitly owned rather than
+    // relying on it being swallowed.
+    onError: () => undefined,
+  });
+}
+
 export function useLogout() {
   const client = useQueryClient();
   return useMutation({

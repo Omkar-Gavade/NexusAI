@@ -60,19 +60,40 @@ describe('model fan-out', () => {
       'test-gamma': 400,
     });
 
-    // Measured across the fan-out window rather than the whole turn: the turn
-    // also pays for synthesis and three database writes, and on a loaded
-    // machine that overhead made a genuinely concurrent fan-out look sequential.
-    const lastModel = Math.max(
-      completedAt('test-alpha'),
-      completedAt('test-beta'),
-      completedAt('test-gamma'),
-    );
+    const alpha = completedAt('test-alpha');
+    const beta = completedAt('test-beta');
+    const gamma = completedAt('test-gamma');
 
-    // Sequential execution needs at least 1500ms of model time; concurrent
-    // execution is bounded below by the slowest model alone, 900ms.
-    expect(lastModel).toBeGreaterThanOrEqual(900);
-    expect(lastModel).toBeLessThan(1500);
+    /*
+     * Proven by order and by spread, not by an absolute deadline.
+     *
+     * This assertion used to be `last < 1500ms`, on the reasoning that
+     * sequential execution needs 200+900+400 of model time. It was correct and
+     * it was brittle: every mark carries the machine's own overhead, so a
+     * loaded CI box pushed a genuinely concurrent fan-out past the bound and
+     * failed a test about concurrency for reasons that had nothing to do with
+     * it.
+     *
+     * Both properties below are immune to that, because overhead shifts every
+     * mark by roughly the same amount and therefore cancels.
+     */
+
+    // 1. Order. Concurrent models finish in order of their own duration.
+    //    Sequential execution finishes them in plan order whatever their
+    //    delays, so alpha(200) < gamma(400) < beta(900) cannot hold.
+    expect(alpha).toBeLessThan(gamma);
+    expect(gamma).toBeLessThan(beta);
+
+    // 2. Spread. Concurrently the window between first and last completion is
+    //    the difference between the slowest and fastest model — about 700ms.
+    //    Sequentially it would be 1300ms, because each model starts only after
+    //    the previous one finished. Comparing a difference rather than an
+    //    absolute time is what makes this hold on a loaded machine.
+    expect(beta - alpha).toBeLessThan(1000);
+
+    // 3. A floor, which load can only push further from failing: the slowest
+    //    model genuinely waited, so nothing was skipped or stubbed out.
+    expect(beta).toBeGreaterThanOrEqual(900);
   }, 30_000);
 
   it('reports each model the moment it lands, not when the slowest finishes', async () => {

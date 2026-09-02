@@ -119,13 +119,28 @@ describe('synthesis failover', () => {
     expect(events.filter((e) => e.type === 'synthesis_start')).toHaveLength(1);
   }, 30_000);
 
-  it('gives up honestly when every synthesis-capable model fails', async () => {
+  it('delivers a real response when every synthesis-capable model is rate limited', async () => {
+    // The exact shape observed against real providers: the models answered,
+    // every synthesis-capable model was rate limited, and the turn errored —
+    // discarding a valid 925-character answer. The turn must now degrade to
+    // that answer instead of losing it.
     h.testAdapter.reset();
     h.testAdapter.setDefault({ kind: 'succeed', text: LONG_ANSWER });
     for (const model of h.container.registry.routable()) {
       h.testAdapter.programStream(model.id, { kind: 'fail', error: Errors.rateLimited(30) });
     }
 
-    await expect(turn()).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+    const events = await turn();
+
+    const answer = events
+      .filter((e): e is Extract<ChatEvent, { type: 'delta' }> => e.type === 'delta')
+      .map((e) => e.text)
+      .join('');
+
+    expect(events.some((e) => e.type === 'error')).toBe(false);
+    expect(events.some((e) => e.type === 'complete')).toBe(true);
+    expect(answer).toContain(LONG_ANSWER.slice(0, 40));
+    // No provider vocabulary reaches the client.
+    expect(answer).not.toMatch(/rate limit|429|RATE_LIMITED/i);
   }, 30_000);
 });

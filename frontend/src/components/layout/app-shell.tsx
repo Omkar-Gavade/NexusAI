@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { Sidebar } from '@/features/conversations/components/sidebar';
 import { SearchDialog } from '@/features/search/search-dialog';
 import { SettingsDialog } from '@/features/settings/settings-dialog';
+import { useAccountTheme } from '@/features/auth/use-account-theme';
 import { routes } from '@/lib/routes';
 import { useShortcuts } from '@/lib/use-shortcuts';
 import { useUIStore } from '@/stores/ui-store';
@@ -18,6 +19,11 @@ import { useUIStore } from '@/stores/ui-store';
 export function AppShell() {
   const { drawerOpen, sidebarCollapsed, setDrawerOpen, dialog, openDialog, closeDialog } =
     useUIStore();
+
+  // Adopts the account's theme once the session arrives, so a preference set on
+  // one device follows the account to the next.
+  useAccountTheme();
+
   const location = useLocation();
   const navigate = useNavigate();
 

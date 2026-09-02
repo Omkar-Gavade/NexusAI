@@ -152,23 +152,25 @@ describe('failure matrix', () => {
     expect(o.agreement).toMatchObject({ requested: 3, responded: 2 });
   }, 30_000);
 
-  it('every synthesis-capable model fails → honest failure, no fabricated answer', async () => {
+  it('every synthesis-capable model fails → the best real response is delivered', async () => {
     h.testAdapter.reset();
-    // Every candidate, not just the first: a single failure now fails over to
-    // another synthesist rather than losing the turn, so only exhausting them
-    // all is a real failure.
+    // `stream` is the synthesis path, `generate` the fan-out. Failing every
+    // stream leaves three good responses with nothing able to reconcile them.
     for (const model of h.container.registry.routable()) {
       h.testAdapter.programStream(model.id, { kind: 'fail', error: Errors.providerUnavailable({}) });
     }
 
     const o = await turn();
 
-    // The models did answer — the failure is the synthesis pass alone.
+    // The models answered, so their work is delivered rather than discarded.
+    // This previously produced an error on screen while a valid response sat
+    // unused in memory — observed live against real providers, where Groq's
+    // 925-character answer was thrown away because Gemini was rate limited.
     expect(o.events.filter((e) => e.type === 'model_complete')).toHaveLength(3);
-    expect(o.error).not.toBeNull();
-    expect(o.answer).toBe('');
-    // Never a `complete` event alongside a failure.
-    expect(o.events.some((e) => e.type === 'complete')).toBe(false);
+    expect(o.error).toBeNull();
+    expect(o.answer.length).toBeGreaterThan(0);
+    expect(o.events.some((e) => e.type === 'complete')).toBe(true);
+    expect(o.agreement).toMatchObject({ requested: 3, responded: 3 });
   }, 30_000);
 
   it('a malformed provider response is reported, never rendered as an answer', async () => {

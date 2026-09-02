@@ -357,6 +357,26 @@
  * animation removed, because motion is never what makes content visible.
  * ------------------------------------------------------------------------- */
 
+/*
+ * An assistant turn arriving.
+ *
+ * Runs once, on mount, and is deliberately close to invisible: 150ms and four
+ * pixels. Long enough that the answer does not simply pop into place, short
+ * enough that it never delays reading. The whole block moves, not paragraphs
+ * and not words — animating text as it streams would make the answer feel
+ * theatrical rather than written.
+ */
+@keyframes nx-answer-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Scroll-linked reveal, driven by IntersectionObserver in `reveal.tsx`. */
 .nx-reveal {
   opacity: 0;

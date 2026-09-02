@@ -1,7 +1,12 @@
 node_modules/
 dist/
+# Every local env file, not just the two names that were listed here before.
+# `backend/.env.backup-<ts>` matched neither `.env` nor `.env.local`, so it was
+# tracked and committed with a real Ed25519 signing key inside it. The glob is
+# what stops the next variant spelling from doing the same.
 .env
-.env.local
+.env.*
+!.env.example
 *.tsbuildinfo
 .DS_Store
 playwright-report/

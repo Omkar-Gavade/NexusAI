@@ -1,49 +1,31 @@
-import { Rule } from '@/components/ui/rule';
-
 /**
- * Explains what belongs here and offers one way in. No illustration, no logo,
- * no oversized icon — the composer is the call to action, and a button pointing
- * at it would be redundant.
+ * The empty conversation.
+ *
+ * One line, positioned where the first answer will appear. No suggestion
+ * buttons, no explanation of what the product does, no illustration: a person
+ * who has signed in and opened a conversation has already been sold, and a
+ * workspace that pitches itself every time it is empty reads as a landing page
+ * that failed to log you in.
+ *
+ * The composer directly below is the call to action, so nothing here competes
+ * with it. What this space is for is telling the reader the application is
+ * ready — and, when it is not, why.
  */
-const SUGGESTIONS = [
-  'Compare two approaches to a problem I describe',
-  'Review this code for correctness and edge cases',
-  'Explain a system design trade-off in depth',
-  'Analyse an argument and tell me where it is weak',
-] as const;
-
-export function EmptyConversation({
-  onPick,
-  disabled,
-}: {
-  onPick: (prompt: string) => void;
-  disabled: boolean;
-}) {
+export function EmptyConversation({ disabled }: { disabled: boolean }) {
   return (
-    <div className="pt-[6vh]">
-      <Rule label="NEW CONVERSATION" />
-
-      <p className="mt-5 text-body text-ink">Ask a question, or paste something to analyse.</p>
-      <p className="mt-2 max-w-[52ch] text-ui text-ink-2">
-        NexusAI selects the models, reconciles their answers, and shows you where they disagree.
+    <div className="pt-[10vh]">
+      <p className="text-section font-[550] tracking-[-0.01em] text-ink">
+        What can I help you with?
       </p>
 
-      {!disabled && (
-        <ul className="mt-6 flex flex-col gap-1.5">
-          {SUGGESTIONS.map((suggestion) => (
-            <li key={suggestion}>
-              <button
-                type="button"
-                // Populates the composer rather than sending: the user must be
-                // able to edit before committing to a generation.
-                onClick={() => onPick(suggestion)}
-                className="flex min-h-11 w-full items-center rounded-control border border-line px-3 text-left text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:border-line-control hover:bg-hover hover:text-ink"
-              >
-                {suggestion}
-              </button>
-            </li>
-          ))}
-        </ul>
+      {disabled && (
+        // Stated plainly rather than left for the user to discover by typing a
+        // question and watching it fail. Never claims which model is missing —
+        // availability is per deployment and the workspace reports it per model.
+        <p className="mt-3 max-w-[52ch] text-ui text-ink-2">
+          No models are currently available. This deployment has no reachable provider
+          configured, so a question cannot be answered right now.
+        </p>
       )}
     </div>
   );

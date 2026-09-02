@@ -297,9 +297,51 @@ export class ChatOrchestrator {
     // safe before any text has been streamed — once the reader has seen part of
     // an answer, restarting it with a different model would rewrite what they
     // are already reading.
-    const tried: string[] = [];
-    let synthesist = registry.synthesisModel();
-    if (!synthesist) throw Errors.noModelAvailable();
+
+    /*
+     * A model that failed during this turn's fan-out may not write the answer.
+     * Selecting one blindly produced the observed failure: Gemini returned
+     * RATE_LIMITED in the fan-out and was then chosen, seconds later, to
+     * synthesise — and failed again for exactly the same reason.
+     */
+    const failedThisTurn = [...attempts.values()]
+      .filter((attempt) => attempt.outcome !== 'complete')
+      .map((attempt) => attempt.model.id);
+
+    /*
+     * Synthesis reconciles disagreement. With one response there is nothing to
+     * reconcile, so the answer is that response, returned directly.
+     *
+     * This is not an optimisation. Requiring a second model to restate a single
+     * good answer is what made an explicit single-model selection fail: the
+     * user chose Groq, Groq answered in 732ms, and the turn was lost because an
+     * unrelated model was asked to rewrite it and was rate limited.
+     *
+     * A direct answer is persisted with `synthesisModel: null` — the existing
+     * provenance signal for "not synthesised". No verdict is parsed, no stance
+     * assigned, no agreement claimed.
+     */
+    const ineligible = [...failedThisTurn];
+    let synthesist = contributions.length >= 2 ? registry.synthesisModel(ineligible) : undefined;
+
+    /*
+     * Responses in hand but nothing able to reconcile them is a degraded turn,
+     * not a failed one. `contributions` is in plan order, so the first entry is
+     * the highest-ranked model that answered.
+     */
+    if (!synthesist) {
+      yield* this.answerDirectly(
+        assistantId,
+        conversationId,
+        contributions,
+        attempts,
+        plan,
+        startedAt,
+        request.requestId,
+        contributions.length === 1 ? 'single response' : 'no synthesist available',
+      );
+      return;
+    }
 
     let raw = '';
     let emitted = '';
@@ -309,7 +351,7 @@ export class ChatOrchestrator {
 
     for (;;) {
     yield { type: 'synthesis_start', model: registry.ref(synthesist) };
-    tried.push(synthesist.id);
+    ineligible.push(synthesist.id);
 
     const adapter = registry.adapterFor(synthesist);
     if (!adapter) throw Errors.noModelAvailable();
@@ -383,7 +425,7 @@ export class ChatOrchestrator {
       // one provider having a bad minute.
       const alternative =
         !emitted && !signal.aborted && failure.code !== 'CANCELLED'
-          ? registry.synthesisModel(tried)
+          ? registry.synthesisModel(ineligible)
           : undefined;
 
       if (alternative) {
@@ -399,6 +441,32 @@ export class ChatOrchestrator {
         synthesist = alternative;
         raw = '';
         continue;
+      }
+
+      /*
+       * Every synthesis-capable model has now failed, but models answered.
+       * Their work is delivered rather than discarded — this is the case that
+       * put an error on screen while a valid 925-character response sat unused.
+       *
+       * Only when nothing has streamed. Once the reader has seen text the
+       * no-restart rule takes precedence and the partial answer is kept as-is.
+       */
+      if (!emitted && !signal.aborted && failure.code !== 'CANCELLED') {
+        logger.warn(
+          { requestId: request.requestId, failed: synthesist.id, code: failure.code },
+          'synthesis exhausted; answering directly from a successful model',
+        );
+        yield* this.answerDirectly(
+          assistantId,
+          conversationId,
+          contributions,
+          attempts,
+          plan,
+          startedAt,
+          request.requestId,
+          'synthesis exhausted',
+        );
+        return;
       }
 
       // Whatever was already written is kept: the reader saw it, and discarding
@@ -490,6 +558,72 @@ export class ChatOrchestrator {
   }
 
   // --- helpers -------------------------------------------------------------
+
+  /**
+   * Deliver a model's own response as the answer, without synthesis.
+   *
+   * Used when there is nothing to reconcile (one response) or nothing able to
+   * reconcile it (every synthesis-capable model unavailable). Both are degraded
+   * turns, and both are better than the error the reader used to get while a
+   * good answer sat unused in memory.
+   *
+   * `synthesisModel: null` is the provenance signal for "not synthesised" — the
+   * field already exists and is already nullable, so no contract changes. No
+   * verdict block is parsed and every stance stays `unknown`: claiming
+   * agreement over a single response, or over responses that no model actually
+   * compared, would be inventing a measurement.
+   */
+  private async *answerDirectly(
+    assistantId: ObjectId,
+    conversationId: string,
+    contributions: ReadonlyArray<{ model: ModelDefinition; text: string }>,
+    attempts: Map<string, ModelAttempt>,
+    plan: ModelDefinition[],
+    startedAt: number,
+    requestId: string,
+    reason: string,
+  ): AsyncGenerator<ChatEvent> {
+    const { logger } = this.deps;
+    // `contributions` is in plan order, so this is the highest-ranked model
+    // that answered. No new ranking is introduced.
+    const [best] = contributions;
+    // Both call sites check first; asserted rather than assumed so a future
+    // caller cannot reach here with nothing to deliver.
+    if (!best) throw Errors.synthesisFailed({ reason: 'no response available to deliver' });
+
+    logger.info(
+      { requestId, responded: contributions.length, model: best.model.id, reason },
+      'answering directly without synthesis',
+    );
+
+    yield {
+      type: 'agreement',
+      agreement: computeAgreement(this.summarise(plan, attempts, {})),
+      stances: this.fullStances(plan, attempts, {}),
+    };
+    yield { type: 'delta', text: best.text };
+    yield { type: 'sources', sources: [] };
+
+    const elapsed = Date.now() - startedAt;
+    await this.persist(assistantId, conversationId, {
+      content: best.text,
+      status: 'complete',
+      attempts,
+      plan,
+      stances: {},
+      synthesisModel: null,
+      startedAt,
+      firstTokenMs: elapsed,
+    });
+
+    yield {
+      type: 'complete',
+      messageId: assistantId.toHexString(),
+      latencyMs: elapsed,
+      firstTokenMs: elapsed,
+    };
+  }
+
 
   private resolvePlan(request: OrchestratorRequest): ModelDefinition[] {
     const { registry } = this.deps;

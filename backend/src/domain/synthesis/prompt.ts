@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { ModelDefinition } from '../models/catalog.ts';
 
 /** Bumped when the instructions change, so persisted turns stay attributable. */
-export const SYNTHESIS_PROMPT_VERSION = 'synthesis/2026-08-2';
+export const SYNTHESIS_PROMPT_VERSION = 'synthesis/2026-09-1';
 
 export const VERDICT_OPEN = '<verdicts>';
 export const VERDICT_CLOSE = '</verdicts>';
@@ -77,11 +77,18 @@ Do this:
 3. Where they genuinely disagree, say so and explain the disagreement rather than silently picking a side.
 4. Where a claim appears in only one response and you cannot corroborate it, either attribute it or leave it out.
 5. Prefer being correct and incomplete over being complete and wrong.
+6. Answer the question that was asked, directly, in the first sentence. Then add only the explanation that question needs — a short question gets a short answer, and length is not a proxy for quality.
+7. Judge the responses rather than trusting them. A response being present is not evidence that it is right, and two responses making the same mistake do not make it true.
+8. Separate uncertainty from disagreement. Responses that hedge in the same direction are agreeing weakly, not conflicting; say the answer is uncertain, not that the responses conflict.
 
 Do not:
 - concatenate the responses
 - take a majority vote as if it were evidence
+- average conflicting figures, or split the difference between them. If two responses give 7% and 6.5%, the answer is not 6.75%: say which is better supported, or give both and say they conflict. Never report a number that no response gave and you cannot derive.
+- resolve a factual contradiction by choosing the vaguer wording that both could be read as supporting
 - mention that you are a synthesis stage, or refer to "the models" as a group in the prose
+- open with a restatement of the question, a greeting, or assistant boilerplate such as "Certainly" or "As an AI"
+- impose headings or bullet lists on an answer that reads better as a paragraph
 - invent agreement that is not there
 - add sources, citations or figures that no response provided
 - describe a model as having answered when its section is not present

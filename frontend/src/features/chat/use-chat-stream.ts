@@ -31,6 +31,17 @@ export function useChatStream(callbacks: {
   const [pending, setPending] = useState<PendingTurn | null>(null);
   const controller = useRef<AbortController | null>(null);
 
+  /**
+   * A synchronous in-flight latch.
+   *
+   * `state.phase` cannot guard this on its own: it is reducer state, so two
+   * submits in the same tick — a double-press, or Enter arriving twice before
+   * React re-renders — both read the pre-dispatch `idle` and both open a
+   * stream. That is one question billed and persisted twice. A ref flips
+   * before any await, so the second caller is turned away in the same tick.
+   */
+  const inFlight = useRef(false);
+
   // Deltas land far faster than a frame. They accumulate in a ref and flush on
   // requestAnimationFrame, so React commits at most once per frame regardless
   // of token rate — this is what keeps the composer responsive while streaming.
@@ -62,7 +73,8 @@ export function useChatStream(callbacks: {
 
   const send = useCallback(
     async ({ conversationId, prompt, selection }: SendArgs) => {
-      if (isStreaming(state.phase)) return;
+      if (inFlight.current || isStreaming(state.phase)) return;
+      inFlight.current = true;
 
       const clientMessageId = ulid();
       setPending({ clientMessageId, prompt });
@@ -99,11 +111,36 @@ export function useChatStream(callbacks: {
           },
         });
       } finally {
+        inFlight.current = false;
         controller.current = null;
+
+        /*
+         * Apply whatever is still queued, without waiting for a frame.
+         *
+         * `requestAnimationFrame` does not fire while the page is not being
+         * painted — a background tab, a hidden window. Batching onto it is a
+         * rendering optimisation, so it is correct for deltas mid-stream: there
+         * is nothing to paint anyway. It is not correct for the terminal
+         * events. A turn that finished while hidden left `complete` sitting in
+         * the queue, so the reducer never learned the message id, the turn
+         * never reconciled against history, and the optimistic user message was
+         * stranded on screen with no answer beneath it — reproduced with
+         * `document.visibilityState === 'hidden'`.
+         *
+         * Flushing here makes correctness independent of paint: the frame
+         * coalesces updates when one arrives, and the stream ending applies the
+         * rest either way.
+         */
+        if (frame.current !== null) {
+          cancelAnimationFrame(frame.current);
+          frame.current = null;
+        }
+        flush();
+
         callbacks.onSettled(conversationId ?? created);
       }
     },
-    [enqueue, callbacks, state.phase],
+    [enqueue, flush, callbacks, state.phase],
   );
 
   /** Aborting the fetch is what tells the server to cancel the provider calls. */

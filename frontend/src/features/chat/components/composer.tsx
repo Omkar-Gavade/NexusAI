@@ -71,7 +71,10 @@ export function Composer({
   };
 
   return (
-    <div className="px-(--gutter) pb-4 max-lg:px-4">
+    // `viewport-fit=cover` is set on the viewport meta, so on a notched iPhone
+    // the bottom inset is real screen the browser will happily draw under.
+    // Without this the send button sits beneath the home indicator.
+    <div className="px-(--gutter) pb-[max(1rem,env(safe-area-inset-bottom))] max-lg:px-4">
       <form
         onSubmit={(event) => {
           event.preventDefault();
