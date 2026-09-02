@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../src/config/env.ts';
 import { ModelRegistry } from '../../src/domain/models/registry.ts';
 import { ProviderHealthTracker } from '../../src/domain/models/health.ts';
+import { classifyProviderError } from '../../src/infrastructure/llm/errors.ts';
+import type { AppError } from '../../src/domain/errors.ts';
 import { TestAdapter } from '../../src/infrastructure/llm/adapters/test-adapter.ts';
 import type { ProviderAdapter } from '../../src/infrastructure/llm/adapter.ts';
 
@@ -158,5 +160,61 @@ describe('test adapter safety', () => {
     const r = registry({ NODE_ENV: 'production', TEST_PROVIDER_ENABLED: 'false' });
     expect(r.routable()).toHaveLength(0);
     expect(r.autoAvailable()).toBe(false);
+  });
+});
+
+/**
+ * One restricted model must not take its provider down.
+ *
+ * Provider health is provider-scoped, so what an error is classified as decides
+ * how much it disables. Observed live: Mistral answers 403 `tier_not_allowed`
+ * for one model on a free account. Read as a rejected credential that marked
+ * the whole provider `CONFIGURED_BUT_UNAVAILABLE` for fifteen minutes, so every
+ * other Mistral model became unroutable because one was outside the plan.
+ *
+ * This composes the three pieces the way the orchestrator does — classify, then
+ * record, then ask availability — because the bug lived in the composition, not
+ * in any one of them.
+ */
+describe('a model-level restriction does not disable its provider', () => {
+  const TIER_403 = JSON.stringify({ message: 'not allowed', type: 'tier_not_allowed' });
+
+  /** Exactly how `orchestrator.ts` derives the flags from a classified error. */
+  const record = (tracker: ProviderHealthTracker, provider: string, error: AppError) =>
+    tracker.recordFailure(provider, {
+      affectsHealth: error.retryable,
+      isAuthError: error.code === 'AUTH_ERROR',
+    });
+
+  it('leaves the provider routable after a plan restriction', () => {
+    const tracker = new ProviderHealthTracker();
+    record(tracker, 'mistral', classifyProviderError(403, TIER_403, {}));
+
+    // Untouched: not an outage signal, not a credential rejection.
+    expect(tracker.availability('mistral', true)).toBe('UNKNOWN');
+    expect(tracker.availability('mistral', true)).not.toBe('CONFIGURED_BUT_UNAVAILABLE');
+  });
+
+  it('still disables the provider when the credential really is rejected', () => {
+    const tracker = new ProviderHealthTracker();
+    record(tracker, 'mistral', classifyProviderError(401, 'Unauthorized', {}));
+
+    expect(tracker.availability('mistral', true)).toBe('CONFIGURED_BUT_UNAVAILABLE');
+  });
+
+  it('does not let one restricted model poison a sibling model on the same provider', () => {
+    // Availability is asked per provider, so a sibling is only safe if the
+    // provider entry was never marked in the first place.
+    const tracker = new ProviderHealthTracker();
+    record(tracker, 'mistral', classifyProviderError(403, TIER_403, {}));
+
+    const r = registry({}, ['mistral']);
+    r.health.recordFailure('mistral', {
+      affectsHealth: classifyProviderError(403, TIER_403, {}).retryable,
+      isAuthError: false,
+    });
+
+    const mistralModels = r.routable().filter((m) => m.provider === 'mistral');
+    expect(mistralModels.length).toBeGreaterThan(0);
   });
 });
