@@ -75,7 +75,7 @@ export function ConversationItem({ conversation }: { conversation: Conversation 
         className={({ isActive }) =>
           clsx(
             'relative flex h-7 items-center rounded-control pl-2.5 pr-7 max-lg:h-11',
-            'text-ui transition-colors duration-(--duration-instant)',
+            'text-nav transition-colors duration-(--duration-instant)',
             isActive ? 'bg-selected font-[550] text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink',
           )
         }

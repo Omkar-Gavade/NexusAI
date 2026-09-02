@@ -432,6 +432,12 @@ button one hover state at a time.
 
 Three things to notice, because they are the whole strategy:
 
+1. **Navigation is 14px.** One step above UI chrome, used by the sidebar only.
+   The sidebar is read at desktop distance as a list of destinations rather than
+   glanced at beside prose, and 13px titles were hard to scan. Scoped to
+   `--text-nav` rather than raising `--text-ui`, which would push every control
+   in the workspace up with it.
+
 1. **Body is 16px, UI is 13px.** A 3px gap and a 7px line-height gap. Chrome recedes; the answer is
    the largest sustained text on screen by a clear margin. The prior spec used 15px body; 16px is
    chosen because full-vision answers are longer and are read, not skimmed.

@@ -60,13 +60,18 @@ export function AppShell() {
       </a>
 
       <aside
+        data-collapsed={sidebarCollapsed || undefined}
         className={clsx(
-          'shrink-0 border-r border-line',
+          'group/side shrink-0 overflow-hidden border-r border-line',
           // Desktop: in flow. Below lg: fixed and translated off-canvas.
           'max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-(--z-drawer) max-lg:w-[280px]',
           'max-lg:transition-transform max-lg:duration-(--duration-slow) max-lg:ease-expand',
           drawerOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-full',
-          sidebarCollapsed ? 'lg:w-0 lg:overflow-hidden lg:border-r-0' : 'lg:w-(--sidebar-width)',
+          // Collapsing narrows to a rail rather than to nothing, so the border
+          // stays put and the workspace reflows instead of jumping.
+          'lg:transition-[width] lg:duration-(--duration-slow) lg:ease-expand',
+          'motion-reduce:lg:transition-none',
+          sidebarCollapsed ? 'lg:w-(--sidebar-rail)' : 'lg:w-(--sidebar-width)',
         )}
         // Off-canvas content stays out of the tab order entirely.
         inert={!drawerOpen && window.innerWidth < 1024 ? true : undefined}

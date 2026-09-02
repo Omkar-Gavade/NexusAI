@@ -30,7 +30,12 @@ export function Sidebar() {
   const groups = data ? groupByRecency(data.conversations) : [];
 
   return (
-    <div className="flex h-full flex-col bg-workspace">
+    <div className="h-full bg-workspace">
+      <SidebarRail />
+
+      {/* The full sidebar. Hidden at desktop widths while collapsed; below `lg`
+          the sidebar is a drawer, where collapsing does not apply at all. */}
+      <div className="flex h-full flex-col lg:group-data-[collapsed]/side:hidden">
       <div className="flex h-11 items-center gap-2 border-b border-line px-2.5">
         <Link
           to={routes.workspace}
@@ -61,7 +66,7 @@ export function Sidebar() {
                 navigate(routes.workspace);
                 setDrawerOpen(false);
               }}
-              className="flex h-7 w-full items-center gap-2 rounded-control px-2 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink max-lg:h-11"
+              className="flex h-7 w-full items-center gap-2 rounded-control px-2 text-nav text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink max-lg:h-11"
             >
               <Plus size={14} aria-hidden="true" className="shrink-0 text-ink-3" />
               <span className="flex-1 text-left">New conversation</span>
@@ -72,7 +77,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => openDialog('search')}
-              className="flex h-7 w-full items-center gap-2 rounded-control px-2 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink max-lg:h-11"
+              className="flex h-7 w-full items-center gap-2 rounded-control px-2 text-nav text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink max-lg:h-11"
             >
               <Search size={14} aria-hidden="true" className="shrink-0 text-ink-3" />
               <span className="flex-1 text-left">Search</span>
@@ -135,7 +140,7 @@ export function Sidebar() {
             <button
               {...props}
               type="button"
-              className="flex h-9 w-full items-center gap-2 rounded-control px-2 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
+              className="flex h-9 w-full items-center gap-2 rounded-control px-2 text-nav text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
             >
               <span
                 aria-hidden="true"
@@ -150,6 +155,47 @@ export function Sidebar() {
           )}
         />
       </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The collapsed sidebar.
+ *
+ * Collapsing narrows to this rather than to nothing: the workspace keeps its
+ * left edge, so the interaction reads as the panel narrowing instead of
+ * vanishing and dragging the conversation sideways. It carries only what is
+ * worth a permanent 52px — identity, the way back, and the one action that
+ * starts work.
+ */
+function SidebarRail() {
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const navigate = useNavigate();
+
+  return (
+    <div className="hidden h-full flex-col items-center gap-1 py-2.5 lg:group-data-[collapsed]/side:flex">
+      <Link
+        to={routes.workspace}
+        aria-label="NexusAI home"
+        className="grid size-9 place-items-center rounded-control text-ink-2 hover:text-ink"
+      >
+        <Logo size={18} />
+      </Link>
+
+      <IconButton
+        size="md"
+        label="Expand sidebar"
+        icon={<PanelLeft size={15} aria-hidden="true" />}
+        onClick={toggleSidebar}
+      />
+
+      <IconButton
+        size="md"
+        label="New conversation"
+        icon={<Plus size={15} aria-hidden="true" />}
+        onClick={() => navigate(routes.workspace)}
+      />
     </div>
   );
 }

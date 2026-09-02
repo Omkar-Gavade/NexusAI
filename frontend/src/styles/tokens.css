@@ -107,6 +107,10 @@
   --measure-wide: 84ch;
 
   --sidebar-width: 264px;
+  /* Collapsed, the sidebar becomes a rail rather than disappearing: the
+     workspace keeps its left edge, so collapsing reads as narrowing rather
+     than as a panel vanishing and the content lurching sideways. */
+  --sidebar-rail: 52px;
   --panel-width: 360px;
   --rail-width: 2px;
   --rail-gutter: 20px;
@@ -193,6 +197,16 @@
 
   --text-ui: 13px;
   --text-ui--line-height: 20px;
+
+  /* Navigation text. One step above UI chrome, for the sidebar only.
+     `language.md` sets chrome at 13px so it recedes behind the answer, and that
+     still holds for controls sitting beside the reading column — the composer,
+     metadata, buttons. The sidebar is different: it is read at desktop distance
+     as a list of destinations rather than glanced at beside prose, and 13px
+     titles were genuinely hard to scan. Scoped here rather than raising
+     `--text-ui`, which would push every control in the workspace up with it. */
+  --text-nav: 14px;
+  --text-nav--line-height: 21px;
 
   --text-body: 16px;
   --text-body--line-height: 27px;
