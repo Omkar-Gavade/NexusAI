@@ -81,6 +81,20 @@ describe('HomePage — models', () => {
     }
   });
 
+  /*
+   * The product supports two response modes and the page described only one of
+   * them. A visitor who reads "several models, one synthesis" and then finds a
+   * model picker in the composer has been told half of what the product does.
+   */
+  it('says a single chosen model answers directly, without synthesis', () => {
+    const { container } = setup();
+    const section = container.querySelector('#models');
+    const text = section?.textContent ?? '';
+
+    expect(text).toMatch(/pick one model/i);
+    expect(text).toMatch(/no synthesis pass/i);
+  });
+
   // Availability depends on a deployment's configuration and on the provider.
   // A static page cannot know it.
   it('does not claim any provider is available', () => {
@@ -150,6 +164,41 @@ describe('HomePage — honesty', () => {
     // named as future work elsewhere, but the homepage must not present them.
     for (const planned of [/\bcitations?\b/i, /\bknowledge base\b/i, /\battachments?\b/i]) {
       expect(text).not.toMatch(planned);
+    }
+  });
+});
+
+/*
+ * The footer shipped four in-page anchors that survived the homepage
+ * restructure by two releases: every one of them pointed at an id that had
+ * moved onto a sub-page, so they clicked to nothing, on every marketing page.
+ * Resolving each href against the route table is what would have caught it.
+ */
+describe('MarketingFooter', () => {
+  it('exposes the footer navigation as a labelled landmark', () => {
+    setup();
+    expect(screen.getByRole('navigation', { name: /footer/i })).toBeInTheDocument();
+  });
+
+  it('links every footer destination to a real route', () => {
+    setup();
+    const nav = screen.getByRole('navigation', { name: /footer/i });
+    const hrefs = within(nav)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href') ?? '');
+
+    expect(hrefs.length).toBeGreaterThan(0);
+    // `routes` mixes literals with builders (`conversation` takes an id), and
+    // only the literals are linkable destinations.
+    const known = new Set(Object.values(routes).filter((r) => typeof r === 'string'));
+    for (const href of hrefs) expect(known).toContain(href);
+  });
+
+  it('points at no in-page anchor, which a route change silently breaks', () => {
+    setup();
+    const nav = screen.getByRole('navigation', { name: /footer/i });
+    for (const link of within(nav).getAllByRole('link')) {
+      expect(link.getAttribute('href') ?? '').not.toMatch(/^#/);
     }
   });
 });

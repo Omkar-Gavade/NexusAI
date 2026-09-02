@@ -10,16 +10,23 @@ import { MarketingContainer } from './section';
  * cheapest way to look like a template.
  */
 /**
- * The same set the header carries, so the two do not drift apart — and every
- * entry is an anchor that exists on the page. No Documentation, API, Careers or
- * Status: none of those exist, and a footer link to a page that was never built
- * is the smallest possible lie a marketing site can tell.
+ * The same set the header carries, so the two do not drift apart. No
+ * Documentation, API, Careers or Status: none of those exist, and a footer link
+ * to a page that was never built is the smallest possible lie a marketing site
+ * can tell.
+ *
+ * These were once in-page anchors — `#how-it-works`, `#synthesis`,
+ * `#provenance`, `#use-cases` — from when the homepage carried every
+ * explanation inline. Moving that detail onto its own pages left four hrefs
+ * pointing at ids that exist nowhere, on every marketing page, clicking to
+ * nothing. They are routes now, and a test resolves each one against the route
+ * table. `Provenance` is gone rather than aimed at a near-enough page: no page
+ * is about it, and the concept is covered inside `/how-it-works`.
  */
 const FOOTER_LINKS = [
-  { href: '#how-it-works', label: 'How it works' },
-  { href: '#synthesis', label: 'Synthesis' },
-  { href: '#provenance', label: 'Provenance' },
-  { href: '#use-cases', label: 'Use cases' },
+  { to: routes.howItWorks, label: 'How it works' },
+  { to: routes.synthesis, label: 'Synthesis' },
+  { to: routes.useCases, label: 'Use cases' },
 ] as const;
 
 export function MarketingFooter() {
@@ -34,9 +41,9 @@ export function MarketingFooter() {
 
           <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {FOOTER_LINKS.map((link) => (
-              <a key={link.href} href={link.href} className="text-ui text-ink-2 hover:text-ink">
+              <Link key={link.to} to={link.to} className="text-ui text-ink-2 hover:text-ink">
                 {link.label}
-              </a>
+              </Link>
             ))}
           </nav>
 

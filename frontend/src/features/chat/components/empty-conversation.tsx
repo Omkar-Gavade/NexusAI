@@ -22,9 +22,15 @@ export function EmptyConversation({ disabled }: { disabled: boolean }) {
         What can I help you with?
       </h2>
 
+      {/*
+        Both modes, because the composer offers both. Saying only "several
+        models" described the product as it behaves in synthesis mode and
+        misdescribed it the moment a reader picked a single model from the
+        selector — the answer then comes from that model alone.
+      */}
       <p className="mt-2 max-w-[52ch] text-body text-ink-2">
-        Ask anything. NexusAI puts your question to several models and reconciles what comes
-        back into one answer.
+        Ask anything. Pick one model to answer directly, or send the question to several and
+        get their responses reconciled into one answer.
       </p>
 
       {disabled && (

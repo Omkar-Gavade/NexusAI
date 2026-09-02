@@ -98,8 +98,9 @@ export function HomePage() {
       {/* --- 03 · Models --------------------------------------------------- */}
       <Section
         id="models"
-        label="BUILT AROUND MULTIPLE MODELS"
-        title="Six models across six providers."
+        label="CHOOSE YOUR MODEL"
+        title="Six models across six providers. You decide how many answer."
+        lede="Pick one model and it answers you directly, with no synthesis pass — the response is that model's, unedited. Or send the question to three or five at once and get the reconciled answer instead. The choice sits next to the composer and changes per question, not per account."
       >
         <ModelRoster />
         <FailoverNote />

@@ -6,10 +6,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { contextWindow } from '@/lib/format';
 import { useModels } from '../use-models';
 
+/*
+ * The note says what the mode does, not how it feels. "fastest / balanced /
+ * thorough" ranked the modes without ever explaining that two of them run
+ * several models and reconcile them and one does not — which is the single
+ * thing a reader needs in order to choose.
+ */
 const ROUTING: ReadonlyArray<{ mode: RoutingMode; label: string; note: string }> = [
-  { mode: 'single', label: 'Single model', note: 'fastest' },
-  { mode: 'balanced', label: 'Synthesis · 3 models', note: 'balanced' },
-  { mode: 'thorough', label: 'Synthesis · 5 models', note: 'thorough' },
+  { mode: 'single', label: 'Single model', note: 'one model · fastest' },
+  { mode: 'balanced', label: 'Synthesis · 3 models', note: 'three models · reconciled' },
+  { mode: 'thorough', label: 'Synthesis · 5 models', note: 'five models · reconciled' },
 ];
 
 type Option =
@@ -193,7 +199,7 @@ export function ModelSelector({
             'max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0',
           )}
         >
-          <Group label="ROUTING" />
+          <Group label="RESPONSE MODE" />
           {options.map((option, index) =>
             option.kind === 'routing' ? (
               <Row
@@ -224,7 +230,10 @@ export function ModelSelector({
 
           {data && data.models.length > 0 && (
             <>
-              <Group label="MODELS" />
+              <Group
+                label="ANSWER WITH ONE MODEL"
+                hint="Answered by that model alone — no synthesis pass."
+              />
               {options.map((option, index) =>
                 option.kind === 'model' ? (
                   <Row
@@ -251,12 +260,13 @@ export function ModelSelector({
   );
 }
 
-function Group({ label }: { label: string }) {
+function Group({ label, hint }: { label: string; hint?: string }) {
   return (
     <li role="presentation" className="px-2 pb-1 pt-2">
       <span data-register="machine" className="text-note uppercase text-ink-3">
         {label}
       </span>
+      {hint && <span className="mt-0.5 block text-meta text-ink-3">{hint}</span>}
     </li>
   );
 }

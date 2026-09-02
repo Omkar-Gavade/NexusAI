@@ -78,6 +78,32 @@ describe('ModelSelector', () => {
 
   // Hiding an unavailable model makes the product feel smaller and leaves the
   // user unable to discover why it is missing.
+  /*
+   * The distinction the selector exists to offer: some choices reconcile
+   * several models, one answers with a single model and skips synthesis. If
+   * the list stops saying which is which, a reader has to send a question to
+   * find out.
+   */
+  it('says how many models each response mode runs', async () => {
+    setup();
+    screen.getByRole('combobox').focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('option', { name: /single model.*one model/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: /synthesis · 3 models.*three models · reconciled/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: /synthesis · 5 models.*five models · reconciled/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('says that choosing a named model skips synthesis', async () => {
+    setup();
+    screen.getByRole('combobox').focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByText(/no synthesis pass/i)).toBeInTheDocument();
+  });
+
   it('lists an unavailable model, disabled, with its reason', async () => {
     const { onChange } = setup([
       model({ id: 'alpha' }),
