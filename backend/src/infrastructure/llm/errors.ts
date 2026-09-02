@@ -22,6 +22,23 @@ const ACCOUNT_UNUSABLE =
   /insufficient[_ ](balance|quota|credit|funds)|payment required|exceeded your current quota|account (is )?(suspended|deactivated)/;
 
 /**
+ * A 403 the operator cannot fix by presenting a different credential: the key
+ * is valid and accepted, this model simply is not in the account's plan.
+ *
+ * Observed live: Mistral answers `{"type":"tier_not_allowed"}` for
+ * `mistral-large-latest` on a free account. Classified as an auth failure it
+ * did real damage — `providerAuthError` marks the credential rejected, which
+ * takes the *whole provider* out of rotation for fifteen minutes (ADR-016).
+ * One model being outside the plan is not a reason to stop calling the other
+ * models on that provider, and no amount of waiting or re-keying changes it.
+ *
+ * Kept narrow for the same reason the credential markers are: a body that
+ * merely discusses plans or tiers must not be read as a restriction.
+ */
+const PLAN_RESTRICTED =
+  /tier[_ ]not[_ ]allowed|model[_ ]not[_ ]allowed|not allowed to use|plan does not (include|allow)|not (subscribed|entitled) to/;
+
+/**
  * Upstream failure → internal error, in one place.
  *
  * The upstream body is attached to `context` (logged) and never to
@@ -50,7 +67,13 @@ export function classifyProviderError(
     if (/token|context|too long|maximum length/.test(lower)) return Errors.contextTooLong();
     return Errors.invalidProviderRequest(ctx);
   }
-  if (status === 401 || status === 403) return Errors.providerAuthError(ctx);
+  if (status === 401) return Errors.providerAuthError(ctx);
+  if (status === 403) {
+    // A plan restriction is about the model, not the credential. Reporting it
+    // as MODEL_NOT_FOUND keeps the provider healthy and the other models on it
+    // routable, which is the whole difference this branch exists to make.
+    return PLAN_RESTRICTED.test(lower) ? Errors.modelNotFound(ctx) : Errors.providerAuthError(ctx);
+  }
 
   // 402, and the equivalent said in words at another status. Observed live:
   // DeepSeek answers "Insufficient Balance" with 402, which fell through to the

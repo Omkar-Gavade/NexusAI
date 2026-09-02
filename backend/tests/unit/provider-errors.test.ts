@@ -123,3 +123,46 @@ describe('classifyTransportError', () => {
     );
   });
 });
+
+describe('a plan restriction is not a rejected credential', () => {
+  // Observed live against Mistral on a free account, for mistral-large-latest.
+  const TIER = JSON.stringify({
+    object: 'error',
+    message: 'This model is not allowed for your tier.',
+    type: 'tier_not_allowed',
+    code: '3505',
+  });
+
+  it('classifies Mistral’s 403 tier_not_allowed as a model problem', () => {
+    const error = classifyProviderError(403, TIER, {});
+    expect(error.code).toBe('MODEL_NOT_FOUND');
+  });
+
+  it('does not mark the credential rejected, so the provider stays routable', () => {
+    // The damage the old classification did: `AUTH_ERROR` takes the whole
+    // provider out of rotation for fifteen minutes (ADR-016). One model being
+    // outside the plan is no reason to stop calling the others, and no amount
+    // of waiting or re-keying changes it.
+    const error = classifyProviderError(403, TIER, {});
+    expect(error.code).not.toBe('AUTH_ERROR');
+    expect(error.retryable).toBe(false);
+  });
+
+  it('still treats a bare 403 as an auth failure', () => {
+    // Only a recognised restriction marker diverts; anything else is still the
+    // credential being refused.
+    expect(classifyProviderError(403, 'Forbidden', {}).code).toBe('AUTH_ERROR');
+    expect(classifyProviderError(401, 'Unauthorized', {}).code).toBe('AUTH_ERROR');
+  });
+
+  it('does not misread a body that merely discusses plans', () => {
+    // Same discipline as the billing-link case: narrow markers only.
+    const chatter = 'Your plan includes access to many tiers of service.';
+    expect(classifyProviderError(403, chatter, {}).code).toBe('AUTH_ERROR');
+  });
+
+  it('keeps the upstream body out of the user-facing message', () => {
+    const error = classifyProviderError(403, TIER, {});
+    expect(error.message).not.toMatch(/tier_not_allowed|3505/);
+  });
+});
