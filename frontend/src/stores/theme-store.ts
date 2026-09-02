@@ -8,6 +8,15 @@ type Resolved = 'dark' | 'light';
 interface ThemeStore {
   preference: ThemePreference;
   resolved: Resolved;
+  /**
+   * Whether this device holds a theme the person actually picked, as opposed
+   * to the `system` default it starts on.
+   *
+   * `preference` alone cannot answer that: `system` is both "never chose" and
+   * a choice someone can make in Settings, and those two have to be told apart
+   * when an account preference arrives and something has to win.
+   */
+  chosen: boolean;
   setPreference: (preference: ThemePreference) => void;
   /** Re-resolves when the OS theme changes while the preference is `system`. */
   syncWithSystem: () => void;
@@ -21,9 +30,10 @@ function resolve(preference: ThemePreference): Resolved {
   return preference === 'system' ? systemTheme() : preference;
 }
 
-function readStored(): ThemePreference {
+/** The stored preference, or `null` when this device has never had one set. */
+function readStored(): ThemePreference | null {
   const stored = localStorage.getItem(STORAGE_KEY);
-  return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'system';
+  return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : null;
 }
 
 /**
@@ -45,17 +55,21 @@ function apply(resolved: Resolved): void {
   }
 }
 
-const initialPreference = readStored();
+const storedPreference = readStored();
+const initialPreference = storedPreference ?? 'system';
 
 export const useThemeStore = create<ThemeStore>((set, get) => ({
   preference: initialPreference,
   resolved: resolve(initialPreference),
+  chosen: storedPreference !== null,
 
   setPreference: (preference) => {
     localStorage.setItem(STORAGE_KEY, preference);
     const resolved = resolve(preference);
     apply(resolved);
-    set({ preference, resolved });
+    // Writing it is the choice. Everything after this treats the value as the
+    // person's own rather than as the default they were given.
+    set({ preference, resolved, chosen: true });
   },
 
   syncWithSystem: () => {

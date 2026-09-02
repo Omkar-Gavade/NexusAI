@@ -4,8 +4,22 @@
     {
       "name": "frontend",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@nexusai/frontend", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@nexusai/frontend",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@nexusai/backend",
+        "dev"
+      ],
+      "port": 4000
     }
   ]
 }
