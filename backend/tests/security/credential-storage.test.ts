@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PASSWORD_MIN } from '@nexusai/contracts';
 import { Client, createHarness, type Harness } from '../fixtures/harness.ts';
+import { loggerOptions } from '../../src/infrastructure/observability/logger.ts';
 
 let h: Harness;
 beforeAll(async () => {
@@ -110,5 +111,22 @@ describe('credential storage', () => {
 
     expect(hash).toMatch(/^\$argon2id\$/);
     expect(JSON.stringify(stored)).not.toContain(short);
+  });
+});
+
+describe('the change-password fields cannot reach a log', () => {
+  it('redacts both password fields by their real names', () => {
+    // pino matches exact keys, so `*.password` does not cover
+    // `currentPassword`. Nothing in the auth path logs a body today; this is
+    // what stops a future logger call from leaking one.
+    const { redact } = loggerOptions(h.container.config);
+    const paths = (redact as { paths: string[] }).paths;
+
+    for (const key of ['currentPassword', '*.currentPassword', 'newPassword', '*.newPassword']) {
+      expect(paths).toContain(key);
+    }
+    // The pre-existing ones must survive the addition.
+    expect(paths).toContain('passwordHash');
+    expect(paths).toContain('req.headers.authorization');
   });
 });

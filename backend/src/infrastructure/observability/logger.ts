@@ -48,6 +48,14 @@ export function loggerOptions(config: Config): LoggerOptions {
         'res.headers["set-cookie"]',
         'password',
         '*.password',
+        // The change-password endpoint names its fields explicitly, and pino's
+        // paths match exact keys — `*.password` does not cover
+        // `currentPassword`. Nothing in the auth path logs a body today; these
+        // are here so that adding one later cannot leak a credential.
+        'currentPassword',
+        '*.currentPassword',
+        'newPassword',
+        '*.newPassword',
         'passwordHash',
         '*.passwordHash',
         'apiKey',

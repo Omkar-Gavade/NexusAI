@@ -8,6 +8,10 @@ import { RegisterPage } from '@/pages/auth/register-page';
 import { NotFoundPage } from '@/pages/not-found-page';
 import { Composer } from '@/features/chat/components/composer';
 import { AnswerBlock } from '@/features/chat/components/answer-block';
+import { SettingsDialog } from '@/features/settings/settings-dialog';
+import { ChangePasswordForm } from '@/features/settings/change-password-form';
+import { Header } from '@/components/layout/header';
+import { sessionKey } from '@/features/auth/use-session';
 import { fromMessage } from '@/features/chat/answer-view';
 import type { Message } from '@nexusai/contracts';
 
@@ -95,5 +99,74 @@ describe('accessibility — product surfaces', () => {
       { client: createTestQueryClient() },
     );
     expect(await analyse(container)).toEqual([]);
+  });
+});
+
+/**
+ * Surfaces added after the original sweep: the account/security settings, the
+ * password form, and the global header controls.
+ */
+describe('accessibility — account and chrome', () => {
+  const signedIn = () => {
+    const client = createTestQueryClient();
+    client.setQueryData(sessionKey, {
+      user: {
+        id: 'u',
+        email: 'ada@example.test',
+        displayName: 'Ada',
+        preferences: { theme: 'dark' as const, routingMode: 'balanced' as const, pinnedModelId: null },
+        createdAt: new Date().toISOString(),
+      },
+    });
+    return client;
+  };
+
+  it('the password form has no structural violations', async () => {
+    const { container } = render(<ChangePasswordForm />, { client: signedIn() });
+    expect(await analyse(container)).toEqual([]);
+  });
+
+  it('every password field is labelled and typed correctly', async () => {
+    // The specific failure a generic axe sweep can miss: a field that is
+    // labelled but has the wrong autocomplete, which breaks password managers.
+    const { getByLabelText } = render(<ChangePasswordForm />, { client: signedIn() });
+    for (const [label, complete] of [
+      [/current password/i, 'current-password'],
+      [/^new password$/i, 'new-password'],
+      [/confirm new password/i, 'new-password'],
+    ] as const) {
+      const field = getByLabelText(label);
+      expect(field).toHaveAttribute('type', 'password');
+      expect(field).toHaveAttribute('autocomplete', complete);
+    }
+  });
+
+  it('the settings dialog has no structural violations', async () => {
+    const { container } = render(<SettingsDialog open onClose={() => undefined} />, {
+      client: signedIn(),
+    });
+    expect(await analyse(container)).toEqual([]);
+  });
+
+  it('the header controls have no structural violations', async () => {
+    const { container } = render(<Header title="A conversation" conversationId="c1" />, {
+      client: signedIn(),
+    });
+    expect(await analyse(container)).toEqual([]);
+  });
+
+  it('gives every icon-only header control an accessible name', async () => {
+    // axe checks for a name; this checks the names are meaningful rather than
+    // present, which is the failure mode of adding aria labels to satisfy a
+    // linter.
+    const { container } = render(<Header title="A conversation" conversationId="c1" />, {
+      client: signedIn(),
+    });
+    const named = [...container.querySelectorAll('button')].map(
+      (b) => b.getAttribute('aria-label') ?? b.textContent?.trim() ?? '',
+    );
+    expect(named.every((n) => n.length > 0)).toBe(true);
+    expect(named.some((n) => /switch to (light|dark) theme/i.test(n))).toBe(true);
+    expect(named.some((n) => /account/i.test(n))).toBe(true);
   });
 });
