@@ -121,7 +121,12 @@ export function Composer({
             }}
             className={clsx(
               'block max-h-(--composer-max-height) min-h-[27px] w-full',
-              'bg-transparent text-body text-ink outline-none placeholder:text-ink-off',
+              // `ink-3`, not `ink-off`. The placeholder is the only text in an empty
+              // composer and it is what tells you what the field is for — an
+              // enabled control's placeholder is not covered by WCAG 1.4.3's
+              // inactive-control exemption, and `--text-disabled` measures
+              // 3.22:1 in dark against 4.5 required.
+              'bg-transparent text-body text-ink outline-none placeholder:text-ink-3',
               // 16px on small viewports defeats iOS zoom-on-focus.
               'max-md:text-[16px]',
             )}

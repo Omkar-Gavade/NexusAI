@@ -15,18 +15,17 @@ import { MarketingContainer } from './section';
  * to a page that was never built is the smallest possible lie a marketing site
  * can tell.
  *
- * These were once in-page anchors — `#how-it-works`, `#synthesis`,
- * `#provenance`, `#use-cases` — from when the homepage carried every
- * explanation inline. Moving that detail onto its own pages left four hrefs
- * pointing at ids that exist nowhere, on every marketing page, clicking to
- * nothing. They are routes now, and a test resolves each one against the route
- * table. `Provenance` is gone rather than aimed at a near-enough page: no page
- * is about it, and the concept is covered inside `/how-it-works`.
+ * These have been anchors, then routes, then anchors again as the public
+ * surface split into four pages and came back to one. Both times the set was
+ * left pointing at destinations that no longer existed. `home-page.test.tsx`
+ * now resolves every href here against the ids the page actually renders, so
+ * the next structural change fails a test instead of shipping dead links.
  */
 const FOOTER_LINKS = [
-  { to: routes.howItWorks, label: 'How it works' },
-  { to: routes.synthesis, label: 'Synthesis' },
-  { to: routes.useCases, label: 'Use cases' },
+  { href: '#modes', label: 'Product' },
+  { href: '#how-it-works', label: 'How it works' },
+  { href: '#synthesis', label: 'Synthesis' },
+  { href: '#provenance', label: 'Provenance' },
 ] as const;
 
 export function MarketingFooter() {
@@ -34,23 +33,36 @@ export function MarketingFooter() {
     <footer className="border-t border-line-subtle py-10">
       <MarketingContainer>
         <div className="flex flex-wrap items-center gap-x-8 gap-y-5">
-          <Link to={routes.home} aria-label="NexusAI home" className="flex items-center gap-2 rounded-control">
+          <Link
+            to={routes.home}
+            aria-label="NexusAI home"
+            className="flex items-center gap-2 rounded-control max-lg:min-h-11"
+          >
             <Logo size={18} className="text-ink-2" />
             <Wordmark />
           </Link>
 
           <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {FOOTER_LINKS.map((link) => (
-              <Link key={link.to} to={link.to} className="text-ui text-ink-2 hover:text-ink">
+              <a
+                key={link.href}
+                href={link.href}
+                // 44px of hit area below `lg`, per the release checklist. These
+                // were 20px tall — the height of the text — at every width.
+                className="inline-flex items-center rounded-control text-ui text-ink-2 hover:text-ink max-lg:min-h-11"
+              >
                 {link.label}
-              </Link>
+              </a>
             ))}
           </nav>
 
           <span className="flex-1" />
 
           <div className="flex items-center gap-3">
-            <Link to={routes.login} className="text-ui text-ink-2 hover:text-ink">
+            <Link
+              to={routes.login}
+              className="inline-flex items-center rounded-control px-2 text-ui text-ink-2 hover:text-ink max-lg:min-h-11"
+            >
               Sign in
             </Link>
             <CtaLink to={routes.register} variant="secondary" size="md">

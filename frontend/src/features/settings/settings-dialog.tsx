@@ -10,7 +10,9 @@ import { useAccountTheme } from '@/features/auth/use-account-theme';
 
 /**
  * The same three modes the composer's model selector offers, named the same
- * way. This sets the default a new conversation starts from; the selector still
+ * way — literally the same strings, because two surfaces describing one setting
+ * in two vocabularies is how a user comes to believe there are two settings.
+ * This sets the default a new conversation starts from; the selector still
  * overrides it per conversation.
  *
  * `pinnedModelId` is deliberately absent. The server stores it and nothing has
@@ -19,9 +21,9 @@ import { useAccountTheme } from '@/features/auth/use-account-theme';
  * It is left unavailable rather than faked.
  */
 const ROUTING: ReadonlyArray<{ value: RoutingMode; label: string; note: string }> = [
-  { value: 'single', label: 'Single model', note: 'Fastest. One model answers.' },
-  { value: 'balanced', label: 'Balanced', note: 'Three models, then synthesis.' },
-  { value: 'thorough', label: 'Thorough', note: 'Five models, then synthesis.' },
+  { value: 'single', label: 'Single model', note: 'one model · fastest' },
+  { value: 'balanced', label: 'Synthesis · 3 models', note: 'three models · reconciled' },
+  { value: 'thorough', label: 'Synthesis · 5 models', note: 'five models · reconciled' },
 ];
 
 const THEMES: ReadonlyArray<{ value: ThemePreference; label: string; Icon: typeof Sun }> = [
@@ -31,8 +33,12 @@ const THEMES: ReadonlyArray<{ value: ThemePreference; label: string; Icon: typeo
 ];
 
 /**
- * Four controls, grouped by measure rules rather than cards. Settings that do
- * not exist in the product are not invented to fill the screen.
+ * Grouped by measure rules rather than cards, in the order a reader looks for
+ * them: who you are, how it looks, how it answers, how it is secured, and the
+ * way out. Sign out used to sit under ACCOUNT beneath the name and email,
+ * which put the one irreversible control in the dialog directly under two
+ * read-only lines of text. Settings that do not exist in the product are not
+ * invented to fill the screen.
  */
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: user } = useSession();
@@ -44,6 +50,26 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   return (
     <Dialog open={open} onClose={onClose} title="Settings">
       <div className="flex flex-col gap-6">
+        <section>
+          <Rule label="ACCOUNT" className="mb-3" />
+          {user ? (
+            <dl className="flex flex-col gap-2 text-ui">
+              <div className="flex justify-between gap-4">
+                <dt className="text-ink-2">Name</dt>
+                <dd className="truncate text-ink">{user.displayName}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-ink-2">Email</dt>
+                <dd data-register="machine" className="truncate text-meta text-ink-2">
+                  {user.email}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="text-ui text-ink-3">Account details are unavailable right now.</p>
+          )}
+        </section>
+
         <section>
           <Rule label="APPEARANCE" className="mb-3" />
           <div
@@ -114,32 +140,19 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
         </section>
 
         <section>
-          <Rule label="ACCOUNT" className="mb-3" />
-          {user ? (
-            <dl className="flex flex-col gap-2 text-ui">
-              <div className="flex justify-between gap-4">
-                <dt className="text-ink-2">Name</dt>
-                <dd className="truncate text-ink">{user.displayName}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-ink-2">Email</dt>
-                <dd data-register="machine" className="truncate text-meta text-ink-2">
-                  {user.email}
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-ui text-ink-3">Account details are unavailable right now.</p>
-          )}
-
+          <Rule label="SESSION" className="mb-3" />
+          <p className="mb-3 max-w-[46ch] text-ui text-ink-2">
+            Signing out ends this session on this device. Changing your password ends every
+            other one.
+          </p>
           <Button
-            className="mt-4"
             loading={logout.isPending}
             onClick={() => logout.mutate(undefined, { onSuccess: onClose })}
           >
             Sign out
           </Button>
         </section>
+
       </div>
     </Dialog>
   );

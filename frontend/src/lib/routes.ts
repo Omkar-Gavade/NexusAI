@@ -8,11 +8,6 @@
 export const routes = {
   home: '/',
 
-  /** Public marketing pages. Detail lives here, not on the homepage. */
-  howItWorks: '/how-it-works',
-  synthesis: '/synthesis',
-  useCases: '/use-cases',
-
   login: '/login',
   register: '/register',
 
@@ -31,9 +26,6 @@ export const routes = {
  */
 export const routePatterns = {
   home: '/',
-  howItWorks: '/how-it-works',
-  synthesis: '/synthesis',
-  useCases: '/use-cases',
   login: '/login',
   register: '/register',
   workspace: '/app',

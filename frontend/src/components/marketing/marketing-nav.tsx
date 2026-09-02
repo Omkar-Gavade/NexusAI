@@ -10,19 +10,19 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { MarketingContainer } from './section';
 
 /**
- * Four, deliberately. Every entry is an anchor that exists on the page, and the
- * set traces the argument in order: what it does, what it produces, how you
- * check it, and who it is for.
- */
-/**
- * Four destinations, each a real page. They were homepage anchors while the
- * homepage carried every explanation; now that the detail has its own routes,
- * an anchor would scroll past the thing it names.
+ * Three anchors on the one public page, in the order the argument is made:
+ * what you choose, how it runs, what you are told about the result.
+ *
+ * They are native anchors, not router links. A React Router `Link` with a
+ * hash-only target pushes the location without scrolling to the element, which
+ * looks exactly like a broken link. Every href here is asserted against the
+ * page's own section ids by `home-page.test.tsx`, because the last set of nav
+ * anchors outlived the sections they named.
  */
 const LINKS = [
-  { href: routes.howItWorks, label: 'How it works' },
-  { href: routes.synthesis, label: 'Synthesis' },
-  { href: routes.useCases, label: 'Use cases' },
+  { href: '#modes', label: 'Product' },
+  { href: '#how-it-works', label: 'How it works' },
+  { href: '#provenance', label: 'Provenance' },
 ] as const;
 
 export function MarketingNav() {
@@ -52,17 +52,22 @@ export function MarketingNav() {
       className={clsx(
         'sticky top-0 z-(--z-sticky) transition-[background-color,border-color,backdrop-filter]',
         'duration-(--duration-normal)',
-        // Opaque at rest: a blurred bar over nothing is a blur of the page
-        // background, which reads as a rendering artefact rather than a
-        // material. It becomes glass once there is content to sit over.
-        scrolled
-          ? 'border-b border-line-subtle bg-canvas/72 backdrop-blur-xl backdrop-saturate-150'
-          : 'border-b border-transparent bg-canvas',
+        // Opaque in both states. The bar used to become glass once the page
+        // scrolled under it — a translucent fill with a saturating blur — and
+        // §11.1 of the design language lists backdrop blur and glassmorphism as
+        // things to remove on sight. What the scrolled state actually needs is
+        // an edge, so that is all it gets.
+        'bg-canvas',
+        scrolled ? 'border-b border-line-subtle' : 'border-b border-transparent',
       )}
     >
       <MarketingContainer>
         <nav aria-label="Main" className="flex h-14 items-center gap-6">
-          <Link to={routes.home} aria-label="NexusAI home" className="flex items-center gap-2 rounded-control">
+          <Link
+            to={routes.home}
+            aria-label="NexusAI home"
+            className="flex items-center gap-2 rounded-control max-lg:min-h-11"
+          >
             <Logo size={19} className="text-ink-2" />
             <Wordmark />
           </Link>
@@ -70,12 +75,15 @@ export function MarketingNav() {
           <ul className="flex flex-1 items-center gap-1 max-md:hidden">
             {LINKS.map((item) => (
               <li key={item.href}>
-                <Link
-                  to={item.href}
-                  className="rounded-control px-2.5 py-1.5 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
+                <a
+                  href={item.href}
+                  // The desktop bar appears at `md` (768px) but the 44px touch
+                  // minimum applies below `lg`, so these are 28px tall on
+                  // exactly the widths where a finger is the pointer.
+                  className="inline-flex items-center rounded-control px-2.5 py-1.5 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink max-lg:min-h-11"
                 >
                   {item.label}
-                </Link>
+                </a>
               </li>
             ))}
           </ul>
@@ -84,7 +92,7 @@ export function MarketingNav() {
             <ThemeToggle />
             <Link
               to={routes.login}
-              className="rounded-control px-2.5 py-1.5 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
+              className="inline-flex items-center rounded-control px-2.5 py-1.5 text-ui text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink max-lg:min-h-11"
             >
               Sign in
             </Link>
@@ -114,13 +122,13 @@ export function MarketingNav() {
             <ul className="flex flex-col py-2">
               {LINKS.map((item) => (
                 <li key={item.href}>
-                  <Link
-                    to={item.href}
+                  <a
+                    href={item.href}
                     onClick={() => setMenuOpen(false)}
                     className="flex min-h-11 items-center rounded-control px-2 text-ui text-ink-2 hover:bg-hover hover:text-ink"
                   >
                     {item.label}
-                  </Link>
+                  </a>
                 </li>
               ))}
               <li className="mt-2 flex gap-2 border-t border-line-subtle pt-3 pb-2">

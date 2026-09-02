@@ -47,14 +47,48 @@ beforeEach(() => vi.mocked(api.updateProfile).mockReset());
 describe('settings', () => {
   it('shows the routing mode the account actually holds', () => {
     setup('thorough');
-    expect(screen.getByRole('radio', { name: /thorough/i })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: /synthesis · 5 models/i })).toHaveAttribute(
       'aria-checked',
       'true',
     );
-    expect(screen.getByRole('radio', { name: /balanced/i })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: /synthesis · 3 models/i })).toHaveAttribute(
       'aria-checked',
       'false',
     );
+  });
+
+  /*
+   * The dialog called these Balanced and Thorough while the composer's selector
+   * called the same three settings Single model, Synthesis · 3 models and
+   * Synthesis · 5 models. One setting described in two vocabularies is how a
+   * user comes to believe there are two settings, so the strings are now
+   * identical — and this is the assertion that keeps them so.
+   */
+  it('names the routing modes exactly as the composer selector does', () => {
+    setup('balanced');
+    for (const label of ['Single model', 'Synthesis · 3 models', 'Synthesis · 5 models']) {
+      expect(screen.getByRole('radio', { name: new RegExp(label, 'i') })).toBeInTheDocument();
+    }
+  });
+
+  /*
+   * Sign out is the one irreversible control here. It used to sit under ACCOUNT
+   * directly beneath the read-only name and email; it now has its own group,
+   * last, and says what it ends.
+   */
+  it('separates the session controls from the account details', () => {
+    const { container } = setup('balanced');
+    const labels = [...container.querySelectorAll('section')].map(
+      (section) => section.textContent ?? '',
+    );
+
+    const account = labels.findIndex((t) => t.startsWith('ACCOUNT'));
+    const session = labels.findIndex((t) => t.startsWith('SESSION'));
+
+    expect(account).toBeGreaterThanOrEqual(0);
+    expect(session).toBeGreaterThan(account);
+    expect(labels[session]).toMatch(/sign out/i);
+    expect(labels[account]).not.toMatch(/sign out/i);
   });
 
   it('persists a routing change through the profile endpoint', async () => {

@@ -1,12 +1,12 @@
 # Product Routes & Information Architecture
 
-Status: **current** · Updated 2026-08-19
+Status: **current** · Updated 2026-09-02
 
 ## Route map
 
 | Path | Access | Component | Notes |
 |---|---|---|---|
-| `/` | public | `pages/home/home-page.tsx` | Landing. Redirects to `/app` if a session exists |
+| `/` | public | `pages/home/home-page.tsx` | The entire public surface. Redirects to `/app` if a session exists |
 | `/login` | public | `pages/auth/login-page.tsx` | Honours `?next=` |
 | `/register` | public | `pages/auth/register-page.tsx` | Honours `?next=` |
 | `/app` | private | `pages/app/conversation-page.tsx` | Workspace root **is** a new conversation |
@@ -64,16 +64,29 @@ them, and neither is a destination anyone links to. See
 
 ## Home page information architecture
 
+There is **one** public page. `/pricing`, `/how-it-works`, `/synthesis` and
+`/use-cases` were real routes for a while; their content is now sections of `/`
+and the routes are gone. Nothing redirects — the SPA fallback serves the shell
+and the router answers not-found, which is the correct outcome for a page that
+no longer exists.
+
 | Section | Anchor | Claim it makes |
 |---|---|---|
-| Hero | — | The proposition, both CTAs, a representative interface illustration |
-| Why several models | `#why` | The value is reconciliation, not model count |
-| How it works | `#how-it-works` | Five steps: ask, route, compare, synthesise, trace |
-| Synthesis | `#synthesis` | You read the conclusion, evidence sits underneath |
-| Provenance | `#provenance` | Rail semantics: position, density, divergence, failures |
-| Where it helps | `#use-cases` | Research, technical, writing, decision support |
-| Capabilities | `#capabilities` | Built vs Planned, stated with equal weight |
-| What is measured | `#measured` | Nothing is estimated; no confidence percentages |
+| Hero | — | One question, one model or several. Both CTAs |
+| Two ways to ask | `#modes` | Direct answers alone; synthesis reconciles. **The one section that must land** |
+| The models | `#models` | Six models, six providers, availability per deployment |
+| How it works | `#how-it-works` | Parallel fan-out, then the six stages in order |
+| Synthesis | `#synthesis` | Reconciliation, judged stance, and what it does not do |
+| Provenance | `#provenance` | Used models, rail semantics, failover honesty |
+| The workspace | `#product` | A static reconstruction of the real answer surface |
+| Get started | — | One CTA |
+
+Nav and footer link to these anchors with **native `<a href="#…">`**, not router
+`Link`s. A hash-only `to` on a React Router `Link` pushes the location without
+scrolling to the element, which is visually indistinguishable from a dead link.
+`home-page.test.tsx` resolves every public href against the ids the page
+actually renders — anchors have broken twice here, once in each direction of
+this split.
 
 ### What the landing page may never contain
 
@@ -82,7 +95,9 @@ Enforced by assertions in `pages/home/home-page.test.tsx`:
 - No performance percentage claims, no `99.x%` figures
 - No user, customer, team, or request counts
 - No compliance badges (SOC 2, ISO 27001, HIPAA)
-- No model vendor names
+- No price, and no pricing surface of any kind
+- No generic AI copy: "AI-powered", "unlock the power of", "the future of AI",
+  "your intelligent assistant", "revolutionary", "cutting-edge"
 - No unlabelled interface illustration — the preview is captioned
   "Static illustration — not live model output"
 - No capability marked `Built` unless it is built

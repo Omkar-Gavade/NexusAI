@@ -205,7 +205,7 @@ export function ProductPreview() {
 
           {/* --- Composer -------------------------------------------------- */}
           <div className="rounded-control border border-line-control bg-workspace p-3">
-            <p className="text-body text-ink-off">Ask anything…</p>
+            <p className="text-body text-ink-3">Ask anything…</p>
             <div className="mt-2 flex items-center gap-2">
               <span
                 data-register="machine"

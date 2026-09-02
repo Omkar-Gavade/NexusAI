@@ -46,7 +46,11 @@ export function Section({
     <section
       id={id}
       className={clsx(
-        'scroll-mt-16 border-t border-line-subtle',
+        // No `scroll-mt-*` here. `base.css` already sets `scroll-padding-top:
+        // 5rem` on the root for exactly this — clearing the 57px sticky bar on
+        // an anchor jump — and the two stacked: a jumped-to section landed
+        // 144px down the viewport, most of it empty, instead of 80.
+        'border-t border-line-subtle',
         surface === 'raised' ? 'bg-workspace' : 'bg-canvas',
         className,
       )}

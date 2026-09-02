@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { Logo } from '@/components/ui/logo';
 import { HomePage } from '@/pages/home/home-page';
@@ -13,15 +13,6 @@ import { RequireAuth } from './require-auth';
  * marketing page should not download the chat surface, the markdown renderer,
  * or the model selector to read it.
  */
-const HowItWorksPage = lazy(async () => ({
-  default: (await import('@/pages/marketing/how-it-works-page')).HowItWorksPage,
-}));
-const SynthesisPage = lazy(async () => ({
-  default: (await import('@/pages/marketing/synthesis-page')).SynthesisPage,
-}));
-const UseCasesPage = lazy(async () => ({
-  default: (await import('@/pages/marketing/use-cases-page')).UseCasesPage,
-}));
 const AppShell = lazy(async () => ({
   default: (await import('@/components/layout/app-shell')).AppShell,
 }));
@@ -46,45 +37,12 @@ function Workspace() {
   );
 }
 
-/**
- * Marketing pages load behind a blank canvas rather than a spinner: they are
- * small chunks on the same origin, and a spinner that flashes for 40ms reads as
- * jank rather than as progress.
- */
-function MarketingRoute({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<div className="min-h-dvh bg-canvas" />}>{children}</Suspense>;
-}
-
 export const router = createBrowserRouter([
   // Public
+  // The public surface is one page. It is eagerly loaded rather than lazy:
+  // it is the first thing anyone sees, and a chunk boundary in front of it
+  // buys a blank frame instead of a paint.
   { path: routePatterns.home, element: <HomePage /> },
-  // Marketing pages are lazy: the homepage should not pay for the
-  // page's currency list, and none of them should pull in the workspace.
-  {
-    path: routePatterns.howItWorks,
-    element: (
-      <MarketingRoute>
-        <HowItWorksPage />
-      </MarketingRoute>
-    ),
-  },
-  {
-    path: routePatterns.synthesis,
-    element: (
-      <MarketingRoute>
-        <SynthesisPage />
-      </MarketingRoute>
-    ),
-  },
-  {
-    path: routePatterns.useCases,
-    element: (
-      <MarketingRoute>
-        <UseCasesPage />
-      </MarketingRoute>
-    ),
-  },
-
   { path: routePatterns.login, element: <LoginPage /> },
   { path: routePatterns.register, element: <RegisterPage /> },
 

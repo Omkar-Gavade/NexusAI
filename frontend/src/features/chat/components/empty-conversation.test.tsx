@@ -4,8 +4,33 @@ import { EmptyConversation } from './empty-conversation';
 
 describe('EmptyConversation', () => {
   it('invites a question without re-pitching the product', () => {
-    render(<EmptyConversation disabled={false} />);
-    expect(screen.getByRole('heading', { name: /what can i help you with/i })).toBeInTheDocument();
+    const { container } = render(<EmptyConversation disabled={false} />);
+    expect(screen.getByRole('heading', { name: /ask anything/i })).toBeInTheDocument();
+    // The generic-chatbot opener, named so it cannot come back.
+    expect(container.textContent ?? '').not.toMatch(/how can i help you today/i);
+  });
+
+  /*
+   * Categories, not prompts, and not buttons. "Review some code" typed into
+   * the composer and sent produces nothing useful, so a clickable one would be
+   * an affordance that punishes whoever trusts it.
+   */
+  it('shows what the product is for without offering a fake affordance', () => {
+    const { container } = render(<EmptyConversation disabled={false} />);
+
+    expect(container.textContent).toMatch(/compare two technologies/i);
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
+  });
+
+  /*
+   * Attachments are `Planned` and there is no upload endpoint. An empty state
+   * that suggests analysing a document is advertising a capability the product
+   * does not have.
+   */
+  it('suggests nothing the product cannot do', () => {
+    const { container } = render(<EmptyConversation disabled={false} />);
+    expect(container.textContent ?? '').not.toMatch(/document|upload|attach|image|file/i);
   });
 
   /*
@@ -17,7 +42,8 @@ describe('EmptyConversation', () => {
     const { container } = render(<EmptyConversation disabled={false} />);
     const text = container.textContent ?? '';
 
-    expect(text).toMatch(/one model to answer directly/i);
+    expect(text).toMatch(/choose a model for a direct answer/i);
+    expect(text).toMatch(/synthesis/i);
     expect(text).toMatch(/several/i);
   });
 

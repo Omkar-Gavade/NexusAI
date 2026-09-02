@@ -23,14 +23,19 @@ function setup({ signedIn = false } = {}) {
 }
 
 describe('HomePage — structure', () => {
-  // The homepage carried every explanation the product has, which made it long
-  // and slow to reach a point. Detail now lives on its own routes.
-  it('stays concise: the detail belongs on the sub-pages', () => {
+  /*
+   * One public page. The detail lived on `/how-it-works`, `/synthesis` and
+   * `/use-cases` for a while, which meant the argument only landed for a
+   * reader who clicked, and left two generations of nav anchors pointing at
+   * sections that had moved. The ceiling is what stops the consolidation from
+   * turning back into the twelve-section document it started as.
+   */
+  it('holds the whole argument, without becoming a document', () => {
     const { container } = setup();
     const sections = container.querySelectorAll('main section');
 
-    expect(sections.length).toBeGreaterThanOrEqual(5);
-    expect(sections.length).toBeLessThanOrEqual(8);
+    expect(sections.length).toBeGreaterThanOrEqual(6);
+    expect(sections.length).toBeLessThanOrEqual(9);
   });
 
   it('keeps a single h1 and no skipped heading levels', () => {
@@ -43,10 +48,29 @@ describe('HomePage — structure', () => {
     }
   });
 
-  it('leads with the mechanism, not a slogan', () => {
+  it('leads with the choice, not a slogan', () => {
     setup();
     const heading = screen.getByRole('heading', { level: 1 });
-    expect(heading.textContent).toMatch(/multiple models/i);
+    expect(heading.textContent).toMatch(/one question/i);
+    expect(heading.textContent).toMatch(/model/i);
+  });
+
+  // Generic AI landing-page copy, named so it cannot drift back in.
+  it('makes no generic AI claim', () => {
+    const { container } = setup();
+    const text = container.textContent ?? '';
+
+    for (const phrase of [
+      /ai[- ]powered/i,
+      /unlock the power/i,
+      /the future of ai/i,
+      /your intelligent assistant/i,
+      /revolutionary/i,
+      /cutting[- ]edge/i,
+      /seamless(ly)? integrat/i,
+    ]) {
+      expect(text).not.toMatch(phrase);
+    }
   });
 
   it('points both calls to action at real destinations', () => {
@@ -55,9 +79,9 @@ describe('HomePage — structure', () => {
       'href',
       routes.register,
     );
-    expect(screen.getByRole('link', { name: /see how it works/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /see both modes/i })).toHaveAttribute(
       'href',
-      routes.howItWorks,
+      '#modes',
     );
   });
 
@@ -81,20 +105,6 @@ describe('HomePage — models', () => {
     }
   });
 
-  /*
-   * The product supports two response modes and the page described only one of
-   * them. A visitor who reads "several models, one synthesis" and then finds a
-   * model picker in the composer has been told half of what the product does.
-   */
-  it('says a single chosen model answers directly, without synthesis', () => {
-    const { container } = setup();
-    const section = container.querySelector('#models');
-    const text = section?.textContent ?? '';
-
-    expect(text).toMatch(/pick one model/i);
-    expect(text).toMatch(/no synthesis pass/i);
-  });
-
   // Availability depends on a deployment's configuration and on the provider.
   // A static page cannot know it.
   it('does not claim any provider is available', () => {
@@ -103,6 +113,98 @@ describe('HomePage — models', () => {
 
     expect(text).not.toMatch(/all (models|providers) available|always available/i);
     expect(text).toMatch(/reports itself as unavailable|depends on|unconfigured/i);
+  });
+});
+
+/*
+ * The one section that has to land. Everything after it on the page is
+ * mechanism; a visitor who leaves understanding only this understands the
+ * product. The page described synthesis alone for two releases while the
+ * composer offered both, so each half is asserted separately.
+ */
+describe('HomePage — direct and synthesis', () => {
+  it('presents both modes side by side', () => {
+    const { container } = setup();
+    const modes = container.querySelector('#modes');
+    expect(modes).not.toBeNull();
+
+    const text = modes?.textContent ?? '';
+    expect(text).toMatch(/direct/i);
+    expect(text).toMatch(/synthesis/i);
+  });
+
+  it('says a chosen model answers alone, with nothing reconciling it', () => {
+    const { container } = setup();
+    const text = container.querySelector('#modes')?.textContent ?? '';
+
+    expect(text).toMatch(/pick a model/i);
+    expect(text).toMatch(/unedited/i);
+    expect(text).toMatch(/ANSWERED DIRECTLY/);
+  });
+
+  /*
+   * The illustrated turn asks three models and gets two back. A tidy
+   * three-of-three would misrepresent the ordinary case and hide the thing
+   * provenance exists to show.
+   */
+  it('shows a failed model in the synthesis illustration, and counts only what ran', () => {
+    const { container } = setup();
+    const text = container.querySelector('#modes')?.textContent ?? '';
+
+    expect(text).toMatch(/no response/i);
+    expect(text).toMatch(/TWO OF THREE RESPONDED/);
+    expect(text).toMatch(/SYNTHESISED/);
+  });
+
+  // Concatenating four responses is the thing this product is not.
+  it('describes synthesis as a pass that writes one answer', () => {
+    const { container } = setup();
+    const text = container.querySelector('#synthesis')?.textContent ?? '';
+
+    expect(text).toMatch(/reconcil/i);
+    expect(text).toMatch(/four columns/i);
+    expect(text).toMatch(/reconciled is not the same as correct/i);
+  });
+});
+
+/*
+ * Anchors have broken twice here: once when the homepage detail moved onto
+ * sub-pages and left the nav pointing at ids that no longer existed, and again
+ * when the footer kept those ids after the routes replaced them. Resolving
+ * every public href against the ids this page actually renders is the check
+ * that would have caught both.
+ */
+describe('HomePage — link integrity', () => {
+  function hrefsIn(container: HTMLElement): string[] {
+    return [...container.querySelectorAll('a[href]')].map((a) => a.getAttribute('href') ?? '');
+  }
+
+  it('resolves every in-page anchor to a section that exists', () => {
+    const { container } = setup();
+    const anchors = hrefsIn(container).filter((href) => href.startsWith('#'));
+
+    expect(anchors.length).toBeGreaterThan(0);
+    for (const href of anchors) {
+      expect(container.querySelector(href)).not.toBeNull();
+    }
+  });
+
+  it('points every other link at a route that exists', () => {
+    const { container } = setup();
+    // `routes` mixes literals with builders (`conversation` takes an id), and
+    // only the literals are linkable destinations.
+    const known = new Set(Object.values(routes).filter((r) => typeof r === 'string'));
+
+    for (const href of hrefsIn(container).filter((h) => !h.startsWith('#'))) {
+      expect(known).toContain(href);
+    }
+  });
+
+  it('links to no removed marketing route', () => {
+    const { container } = setup();
+    for (const href of hrefsIn(container)) {
+      expect(href).not.toMatch(/^\/(pricing|how-it-works|synthesis|use-cases)$/);
+    }
   });
 });
 
@@ -180,25 +282,19 @@ describe('MarketingFooter', () => {
     expect(screen.getByRole('navigation', { name: /footer/i })).toBeInTheDocument();
   });
 
-  it('links every footer destination to a real route', () => {
-    setup();
+  it('resolves every footer destination against this page', () => {
+    const { container } = setup();
     const nav = screen.getByRole('navigation', { name: /footer/i });
     const hrefs = within(nav)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href') ?? '');
 
     expect(hrefs.length).toBeGreaterThan(0);
-    // `routes` mixes literals with builders (`conversation` takes an id), and
-    // only the literals are linkable destinations.
     const known = new Set(Object.values(routes).filter((r) => typeof r === 'string'));
-    for (const href of hrefs) expect(known).toContain(href);
-  });
 
-  it('points at no in-page anchor, which a route change silently breaks', () => {
-    setup();
-    const nav = screen.getByRole('navigation', { name: /footer/i });
-    for (const link of within(nav).getAllByRole('link')) {
-      expect(link.getAttribute('href') ?? '').not.toMatch(/^#/);
+    for (const href of hrefs) {
+      if (href.startsWith('#')) expect(container.querySelector(href)).not.toBeNull();
+      else expect(known).toContain(href);
     }
   });
 });
@@ -228,14 +324,33 @@ describe('MarketingNav', () => {
     expect(toggles.length).toBeGreaterThan(0);
   });
 
-  it('links every nav destination to a real route', () => {
-    setup();
+  it('resolves every nav destination against this page', () => {
+    const { container } = setup();
     const nav = screen.getByRole('navigation', { name: /main/i });
-    const known = new Set<string>(Object.values(routes).filter((v) => typeof v === 'string'));
+    const known = new Set(Object.values(routes).filter((v) => typeof v === 'string'));
 
     for (const link of within(nav).getAllByRole('link')) {
       const href = link.getAttribute('href') ?? '';
-      if (href.startsWith('/')) expect(known.has(href)).toBe(true);
+      if (href.startsWith('#')) expect(container.querySelector(href)).not.toBeNull();
+      else expect(known).toContain(href);
     }
+  });
+
+  /*
+   * A hash-only `to` on a React Router `Link` pushes the location and does not
+   * scroll — visually identical to a dead link. Native anchors are what make
+   * these work, and nothing about the rendered output says which was used, so
+   * the check is that the nav's in-page links exist and resolve at all.
+   */
+  it('offers the product sections as in-page anchors, not routes', () => {
+    const { container } = setup();
+    const nav = screen.getByRole('navigation', { name: /main/i });
+    const anchors = within(nav)
+      .getAllByRole('link')
+      .map((l) => l.getAttribute('href') ?? '')
+      .filter((h) => h.startsWith('#'));
+
+    expect(anchors.length).toBeGreaterThanOrEqual(3);
+    for (const href of anchors) expect(container.querySelector(href)).not.toBeNull();
   });
 });

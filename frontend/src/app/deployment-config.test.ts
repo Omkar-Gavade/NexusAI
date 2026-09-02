@@ -8,7 +8,7 @@ import { routePatterns } from '@/lib/routes';
  *
  * Refreshing any client-side route returned `404: NOT_FOUND`. The app uses
  * `createBrowserRouter`, the build emits one HTML file, and `vercel.json`
- * declared only the `/api` proxy — so a direct request for `/how-it-works`
+ * declared only the `/api` proxy — so a direct request for `/app/chat/:id`
  * matched no file and no rewrite, and Vercel answered before the app existed.
  *
  * The catch-all fixes that, but it must never precede the API proxy: reversed,
@@ -47,7 +47,10 @@ describe('vercel rewrites', () => {
       .map((pattern) => String(pattern))
       .filter((pattern) => pattern.startsWith('/') && !pattern.includes('*'));
 
-    expect(paths.length).toBeGreaterThan(5);
+    // The public surface is one page, so this set is small by design: home,
+    // both auth pages and the workspace root. `conversation` is a relative
+    // segment and `notFound` is a wildcard, so neither appears here.
+    expect(paths).toEqual(expect.arrayContaining(['/', '/login', '/register', '/app']));
     for (const path of paths) {
       expect(path.startsWith('/api/'), `${path} would be captured by the API proxy`).toBe(false);
     }
@@ -89,9 +92,6 @@ describe('production routing behaviour', () => {
     // was ever loaded.
     for (const path of [
       '/',
-      '/how-it-works',
-      '/synthesis',
-      '/use-cases',
       '/login',
       '/register',
       '/app',
@@ -120,22 +120,29 @@ describe('production routing behaviour', () => {
 });
 
 /**
- * Pricing was removed from the public product.
+ * The public surface is one page.
  *
- * A route left behind would not 404 — the SPA fallback answers every path — so
- * a stale link would quietly render the application's own not-found page
- * instead of failing loudly. These assert the removal at the places that would
- * otherwise keep it alive.
+ * `/pricing`, `/how-it-works`, `/synthesis` and `/use-cases` were all real
+ * routes at some point. A route left behind would not 404 — the SPA fallback
+ * answers every path — so a stale link would quietly render the application's
+ * own not-found page instead of failing loudly, and a stale *pattern* would
+ * silently resurrect the page. These assert the removal at both places.
  */
-describe('no pricing surface', () => {
-  it('has no pricing route pattern', () => {
-    expect(Object.keys(routePatterns)).not.toContain('pricing');
-    expect(Object.values(routePatterns).map(String)).not.toContain('/pricing');
+const REMOVED = ['/pricing', '/how-it-works', '/synthesis', '/use-cases'] as const;
+
+describe('one public page', () => {
+  it('has no pattern for any removed marketing route', () => {
+    const patterns = Object.values(routePatterns).map(String);
+    for (const path of REMOVED) expect(patterns).not.toContain(path);
+
+    for (const key of ['pricing', 'howItWorks', 'synthesis', 'useCases']) {
+      expect(Object.keys(routePatterns)).not.toContain(key);
+    }
   });
 
-  it('resolves /pricing to the SPA shell, where the router answers not-found', () => {
-    // Still handled by the fallback like any unknown path; it simply is not a
-    // page any more.
-    expect(destinationFor('/pricing')).toBe('/index.html');
+  it('resolves each of them to the SPA shell, where the router answers not-found', () => {
+    // Still handled by the fallback like any unknown path; they simply are not
+    // pages any more.
+    for (const path of REMOVED) expect(destinationFor(path)).toBe('/index.html');
   });
 });

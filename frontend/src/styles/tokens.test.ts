@@ -104,6 +104,21 @@ describe.each([
     expect(ratio(theme, '--text-disabled', '--surface-canvas')).toBeGreaterThanOrEqual(3);
   });
 
+  /*
+   * The composer placeholder used `--text-disabled` and measured 3.22:1 in
+   * dark. A placeholder in an *enabled* field is not an inactive control, so
+   * the 1.4.3 exemption does not cover it — it is body text at body size and
+   * needs 4.5. It uses `--text-tertiary` now; this is the assertion that the
+   * surfaces a composer actually sits on can carry it.
+   */
+  it('--text-tertiary carries placeholder text at AA on every surface', () => {
+    for (const surface of SURFACES) {
+      expect(ratio(theme, '--text-tertiary', surface), `on ${surface}`).toBeGreaterThanOrEqual(
+        4.5,
+      );
+    }
+  });
+
   it('the primary button reaches AAA in both directions', () => {
     expect(ratio(theme, '--text-inverse', '--text-primary')).toBeGreaterThanOrEqual(7);
   });

@@ -31,9 +31,9 @@ Code: NOT_FOUND
 
 on refreshing any client-side route.
 
-The app uses `createBrowserRouter`, so `/how-it-works`, `/login`, `/app` and the
+The app uses `createBrowserRouter`, so `/login`, `/register`, `/app` and the
 rest are real URLs handled in JavaScript. The build emits exactly one HTML file.
-A direct request for `/how-it-works` therefore finds no matching file on disk,
+A direct request for `/app/chat/:id` therefore finds no matching file on disk,
 matched no rewrite, and Vercel returned its own 404 — the app was never
 reached, which is why it looked like a deployment fault rather than a routing
 one. This rule hands every unmatched path to `index.html` so the router can

@@ -31,7 +31,13 @@ export function ThemeToggle() {
       // The label names the destination, not the current state: a control
       // announced as "dark theme" is ambiguous about what pressing it does.
       aria-label={`Switch to ${next} theme`}
-      className="grid size-8 place-items-center rounded-control text-ink-3 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
+      // The 32px box is the visual size; below the desktop breakpoint the hit
+      // area grows to the 44px touch minimum without changing layout. This is
+      // the same `before:` treatment `IconButton` uses — the control is
+      // hand-rolled rather than an `IconButton` because it renders its own
+      // icon from the resolved theme, and it had been missing the hit area
+      // that every other icon control in the product has.
+      className="relative grid size-8 place-items-center rounded-control text-ink-3 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink before:absolute before:left-1/2 before:top-1/2 before:size-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] lg:before:hidden"
     >
       <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
     </button>

@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import axe from 'axe-core';
-import { createTestQueryClient, render } from '@/test/render';
+import userEvent from '@testing-library/user-event';
+import { createTestQueryClient, render, screen } from '@/test/render';
 import { catalog, model } from '@/test/fixtures';
 import { HomePage } from '@/pages/home/home-page';
 import { LoginPage } from '@/pages/auth/login-page';
 import { RegisterPage } from '@/pages/auth/register-page';
 import { NotFoundPage } from '@/pages/not-found-page';
 import { Composer } from '@/features/chat/components/composer';
+import { EmptyConversation } from '@/features/chat/components/empty-conversation';
+import { ModelSelector } from '@/features/models/components/model-selector';
 import { AnswerBlock } from '@/features/chat/components/answer-block';
 import { SettingsDialog } from '@/features/settings/settings-dialog';
 import { ChangePasswordForm } from '@/features/settings/change-password-form';
@@ -86,6 +89,39 @@ describe('accessibility — product surfaces', () => {
       />,
       { client },
     );
+    expect(await analyse(container)).toEqual([]);
+  });
+
+  it.each([
+    ['ready', false],
+    ['no models available', true],
+  ])('the empty conversation (%s) has no structural violations', async (_name, disabled) => {
+    const { container } = render(<EmptyConversation disabled={disabled} />, {
+      client: createTestQueryClient(),
+    });
+    expect(await analyse(container)).toEqual([]);
+  });
+
+  /*
+   * Open, not closed. A combobox that is fine collapsed can still expose a
+   * listbox whose options are unlabelled or unreachable, and the collapsed
+   * state is the one every other test happens to render.
+   */
+  it('the open model selector has no structural violations', async () => {
+    const client = createTestQueryClient();
+    client.setQueryData(['models'], catalog([model({ id: 'alpha' }), model({ id: 'beta' })]));
+    const { container } = render(
+      <ModelSelector
+        selection={{ mode: 'auto', routing: 'balanced' }}
+        onChange={() => undefined}
+      />,
+      { client },
+    );
+
+    // A raw `.click()` does not flush React state; the listbox never mounts
+    // and the test would pass by analysing a collapsed control.
+    await userEvent.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
     expect(await analyse(container)).toEqual([]);
   });
 
