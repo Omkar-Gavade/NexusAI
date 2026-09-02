@@ -12,7 +12,6 @@ export const routes = {
   howItWorks: '/how-it-works',
   synthesis: '/synthesis',
   useCases: '/use-cases',
-  pricing: '/pricing',
 
   login: '/login',
   register: '/register',
@@ -35,7 +34,6 @@ export const routePatterns = {
   howItWorks: '/how-it-works',
   synthesis: '/synthesis',
   useCases: '/use-cases',
-  pricing: '/pricing',
   login: '/login',
   register: '/register',
   workspace: '/app',

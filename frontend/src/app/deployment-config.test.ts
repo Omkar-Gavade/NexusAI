@@ -92,7 +92,6 @@ describe('production routing behaviour', () => {
       '/how-it-works',
       '/synthesis',
       '/use-cases',
-      '/pricing',
       '/login',
       '/register',
       '/app',
@@ -117,5 +116,26 @@ describe('production routing behaviour', () => {
     // than redirect away from it.
     expect(destinationFor('/app/chat/abc123')).toBe('/index.html');
     expect(config.rewrites.some((r) => r.destination === '/app')).toBe(false);
+  });
+});
+
+/**
+ * Pricing was removed from the public product.
+ *
+ * A route left behind would not 404 — the SPA fallback answers every path — so
+ * a stale link would quietly render the application's own not-found page
+ * instead of failing loudly. These assert the removal at the places that would
+ * otherwise keep it alive.
+ */
+describe('no pricing surface', () => {
+  it('has no pricing route pattern', () => {
+    expect(Object.keys(routePatterns)).not.toContain('pricing');
+    expect(Object.values(routePatterns).map(String)).not.toContain('/pricing');
+  });
+
+  it('resolves /pricing to the SPA shell, where the router answers not-found', () => {
+    // Still handled by the fallback like any unknown path; it simply is not a
+    // page any more.
+    expect(destinationFor('/pricing')).toBe('/index.html');
   });
 });

@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@/test/render';
+import { render, screen } from '@/test/render';
 import { routes } from '@/lib/routes';
 import { HowItWorksPage } from './how-it-works-page';
 import { SynthesisPage } from './synthesis-page';
 import { UseCasesPage } from './use-cases-page';
-import { PricingPage } from './pricing-page';
 
 const PAGES = [
   ['how-it-works', HowItWorksPage, /one question into a multi-model answer/i],
   ['synthesis', SynthesisPage, /one reasoned answer/i],
   ['use-cases', UseCasesPage, /confident answer is not enough/i],
-  ['pricing', PricingPage, /pricing is not set yet/i],
 ] as const;
 
 describe('marketing pages', () => {
@@ -49,46 +47,6 @@ describe('synthesis page', () => {
   it('states that unparseable verdicts stay unknown', () => {
     render(<SynthesisPage />);
     expect(screen.getByText(/unparseable verdicts stay unknown/i)).toBeInTheDocument();
-  });
-});
-
-describe('pricing page', () => {
-  /**
-   * No pricing is defined anywhere in the repository. A page that printed an
-   * amount because the layout looked unfinished without one would be inventing
-   * a number a reader would plan around.
-   */
-  it('publishes no amount', () => {
-    const { container } = render(<PricingPage />);
-    const text = container.textContent ?? '';
-
-    // No figure attached to a currency symbol or a billing period.
-    expect(text).not.toMatch(/[$€£¥₹]\s?\d/);
-    expect(text).not.toMatch(/\d+\s*(\/|per\s)(month|user|seat|year)/i);
-    expect(text).toMatch(/not yet priced/i);
-  });
-
-  it('offers every required currency', () => {
-    render(<PricingPage />);
-    const select = screen.getByLabelText(/show amounts in/i);
-
-    for (const code of ['USD', 'INR', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'SGD', 'AED']) {
-      expect(within(select).getByRole('option', { name: new RegExp(code) })).toBeInTheDocument();
-    }
-  });
-
-  it('does not imply live currency conversion', () => {
-    const { container } = render(<PricingPage />);
-    const text = container.textContent ?? '';
-
-    expect(text).toMatch(/no exchange rates are applied/i);
-    expect(text).not.toMatch(/live rate|converted at|today's rate/i);
-  });
-
-  it('marks every plan as coming soon rather than purchasable', () => {
-    render(<PricingPage />);
-    expect(screen.getAllByText(/coming soon/i).length).toBeGreaterThanOrEqual(3);
-    expect(screen.queryByRole('button', { name: /buy|subscribe|checkout/i })).toBeNull();
   });
 });
 

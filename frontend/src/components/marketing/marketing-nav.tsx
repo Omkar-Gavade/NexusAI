@@ -23,7 +23,6 @@ const LINKS = [
   { href: routes.howItWorks, label: 'How it works' },
   { href: routes.synthesis, label: 'Synthesis' },
   { href: routes.useCases, label: 'Use cases' },
-  { href: routes.pricing, label: 'Pricing' },
 ] as const;
 
 export function MarketingNav() {

@@ -22,10 +22,6 @@ const SynthesisPage = lazy(async () => ({
 const UseCasesPage = lazy(async () => ({
   default: (await import('@/pages/marketing/use-cases-page')).UseCasesPage,
 }));
-const PricingPage = lazy(async () => ({
-  default: (await import('@/pages/marketing/pricing-page')).PricingPage,
-}));
-
 const AppShell = lazy(async () => ({
   default: (await import('@/components/layout/app-shell')).AppShell,
 }));
@@ -62,7 +58,7 @@ function MarketingRoute({ children }: { children: ReactNode }) {
 export const router = createBrowserRouter([
   // Public
   { path: routePatterns.home, element: <HomePage /> },
-  // Marketing pages are lazy: the homepage should not pay for the pricing
+  // Marketing pages are lazy: the homepage should not pay for the
   // page's currency list, and none of them should pull in the workspace.
   {
     path: routePatterns.howItWorks,
@@ -85,14 +81,6 @@ export const router = createBrowserRouter([
     element: (
       <MarketingRoute>
         <UseCasesPage />
-      </MarketingRoute>
-    ),
-  },
-  {
-    path: routePatterns.pricing,
-    element: (
-      <MarketingRoute>
-        <PricingPage />
       </MarketingRoute>
     ),
   },
