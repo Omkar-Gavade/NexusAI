@@ -93,7 +93,12 @@ export function classifyProviderError(
   // ceiling, which providers report against the request rather than the window.
   if (status === 413) return Errors.contextTooLong();
 
-  if (status === 402 || ACCOUNT_UNUSABLE.test(lower)) return Errors.providerAuthError(ctx);
+  // Tagged so health can say what actually happened. The consequence matches a
+  // rejected key — operator action, same cooldown — but the fact does not, and
+  // "credentials were rejected" is false for a valid key on an empty account.
+  if (status === 402 || ACCOUNT_UNUSABLE.test(lower)) {
+    return Errors.providerAuthError({ ...ctx, authCause: 'account' });
+  }
   if (status === 404) return Errors.modelNotFound(ctx);
   if (status === 422 && /safety|policy|blocked|content/.test(lower))
     return Errors.contentPolicy(ctx);

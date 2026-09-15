@@ -41,6 +41,22 @@ describe('classifyProviderError', () => {
       expect(error.code).toBe('AUTH_ERROR');
       // The distinction that matters: retrying this is pointless.
       expect(error.retryable).toBe(false);
+      // And health must be able to say it is the account, not the key.
+      expect(error.context['authCause']).toBe('account');
+    }
+  });
+
+  // The key is the problem here, so nothing may claim otherwise.
+  it('does not tag a rejected key as an account problem', () => {
+    const invalidKey = JSON.stringify({
+      error: { message: 'API key not valid. Please pass a valid API key.' },
+    });
+    for (const error of [
+      classifyProviderError(401, '{}', ctx),
+      classifyProviderError(400, invalidKey, ctx),
+    ]) {
+      expect(error.code).toBe('AUTH_ERROR');
+      expect(error.context['authCause']).toBeUndefined();
     }
   });
 

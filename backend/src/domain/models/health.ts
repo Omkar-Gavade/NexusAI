@@ -13,12 +13,34 @@ const FAILURES_BEFORE_OPEN = 3;
  */
 const AUTH_COOLDOWN_MS = 15 * 60_000;
 
+/**
+ * Why an operator is needed. Both take the provider out of rotation for the same
+ * cooldown, because the remedy is the same shape — someone must act — but they
+ * are different facts, and the reason shown to a user must not swap one for the
+ * other.
+ *
+ * Observed live: DeepSeek answers 402 "Insufficient Balance" with a valid key.
+ * Reported as "credentials were rejected", it sent the reader looking for a key
+ * problem that did not exist.
+ */
+export type AuthCause = 'credentials' | 'account';
+
+/**
+ * Reads the cause the provider-error classifier attached. Anything not marked as
+ * an account problem is a credential problem — the classifier's default.
+ */
+export function authCauseOf(context: Record<string, unknown>): AuthCause {
+  return context['authCause'] === 'account' ? 'account' : 'credentials';
+}
+
 interface ProviderHealth {
   consecutiveFailures: number;
   openedAt: number | null;
   lastSuccessAt: number | null;
   /** When a credential was last rejected. Needs an operator, not a retry loop. */
   authFailedAt: number | null;
+  /** What the operator needs to fix. Meaningful only while `authFailedAt` is set. */
+  authCause: AuthCause | null;
 }
 
 /**
@@ -38,7 +60,13 @@ export class ProviderHealthTracker {
   private entry(provider: string): ProviderHealth {
     let found = this.health.get(provider);
     if (!found) {
-      found = { consecutiveFailures: 0, openedAt: null, lastSuccessAt: null, authFailedAt: null };
+      found = {
+        consecutiveFailures: 0,
+        openedAt: null,
+        lastSuccessAt: null,
+        authFailedAt: null,
+        authCause: null,
+      };
       this.health.set(provider, found);
     }
     return found;
@@ -49,6 +77,7 @@ export class ProviderHealthTracker {
     entry.consecutiveFailures = 0;
     entry.openedAt = null;
     entry.authFailedAt = null;
+    entry.authCause = null;
     entry.lastSuccessAt = Date.now();
   }
 
@@ -62,9 +91,16 @@ export class ProviderHealthTracker {
    * `authFailed` could never be set: a server with a wrong key kept reporting
    * the model as selectable and kept calling the provider on every turn.
    */
-  recordFailure(provider: string, options: { affectsHealth: boolean; isAuthError: boolean }): void {
+  recordFailure(
+    provider: string,
+    options: { affectsHealth: boolean; isAuthError: boolean; authCause?: AuthCause },
+  ): void {
     if (options.isAuthError) {
-      this.entry(provider).authFailedAt = Date.now();
+      const entry = this.entry(provider);
+      entry.authFailedAt = Date.now();
+      // Absent means the classifier had no reason to think otherwise: a 401 or
+      // a provider saying the key is invalid.
+      entry.authCause = options.authCause ?? 'credentials';
       return;
     }
     if (!options.affectsHealth) return;
@@ -96,12 +132,19 @@ export class ProviderHealthTracker {
     return entry.lastSuccessAt === null ? 'UNKNOWN' : 'AVAILABLE';
   }
 
-  reason(availability: Availability): string | null {
+  /**
+   * `provider` is optional so a caller that only has an availability still gets
+   * a sentence — but without it an auth-class failure can only be described in
+   * its most common form, so the registry always passes it.
+   */
+  reason(availability: Availability, provider?: string): string | null {
     switch (availability) {
       case 'NOT_CONFIGURED':
         return 'No API key configured on this server.';
       case 'CONFIGURED_BUT_UNAVAILABLE':
-        return 'The configured credentials were rejected.';
+        return provider !== undefined && this.health.get(provider)?.authCause === 'account'
+          ? 'The provider account cannot serve requests (for example, no remaining balance).'
+          : 'The configured credentials were rejected.';
       case 'TEMPORARILY_UNAVAILABLE':
         return 'Recent requests to this provider failed.';
       case 'DEPRECATED':

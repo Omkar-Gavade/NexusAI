@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness } from '../fixtures/harness.ts';
 import { Errors } from '../../src/domain/errors.ts';
+import { classifyProviderError } from '../../src/infrastructure/llm/errors.ts';
 
 let h: Harness;
 beforeAll(async () => {
@@ -67,6 +68,31 @@ describe('provider health from real turns', () => {
     expect(wire?.availabilityReason).toBe('The configured credentials were rejected.');
     expect(container.registry.routable()).toHaveLength(0);
     expect(container.registry.autoAvailable()).toBe(false);
+  }, 30_000);
+
+  /*
+   * Observed live: DeepSeek answers 402 "Insufficient Balance" with a valid key.
+   * Through a real turn — classifier, orchestrator, tracker, registry — the
+   * reason a client receives must name the account, not the credentials. Every
+   * hop is on the path: the unit tests passed while the orchestrator dropped a
+   * rejected key before it reached the tracker, which is why this file exists.
+   */
+  it('tells the client the account is the problem when a provider says so', async () => {
+    const { testAdapter, container } = h;
+    container.registry.health.reset();
+    testAdapter.reset();
+    const body = JSON.stringify({ error: { message: 'Insufficient Balance' } });
+    testAdapter.setDefault({ kind: 'fail', error: classifyProviderError(402, body, {}) });
+
+    await turn(await newUser());
+
+    const wire = container.registry.toWire().find((m) => m.id === 'test-alpha');
+    expect(wire?.availability).toBe('CONFIGURED_BUT_UNAVAILABLE');
+    expect(wire?.availabilityReason).toMatch(/account/i);
+    expect(wire?.availabilityReason).not.toMatch(/credentials were rejected/i);
+
+    // Leave no state behind for the tests that follow.
+    container.registry.health.reset();
   }, 30_000);
 
   // Without this the provider is dead for the lifetime of the process: it is

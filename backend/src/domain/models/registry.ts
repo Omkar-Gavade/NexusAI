@@ -85,7 +85,7 @@ export class ModelRegistry {
         maxOutputTokens: model.maxOutputTokens,
         capabilities: model.capabilities,
         availability,
-        availabilityReason: this.health.reason(availability),
+        availabilityReason: this.health.reason(availability, model.provider),
         deprecated: model.deprecated,
       };
     });

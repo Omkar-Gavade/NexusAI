@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import { authCauseOf } from '../models/health.ts';
 import type {
   ChatEvent,
   MessageStatus,
@@ -432,6 +433,7 @@ export class ChatOrchestrator {
       registry.health.recordFailure(synthesist.provider, {
         affectsHealth: failure.retryable,
         isAuthError: failure.code === 'AUTH_ERROR',
+        authCause: authCauseOf(failure.context),
       });
 
       // Nothing streamed yet, the client is still connected, and another
@@ -752,6 +754,7 @@ export class ChatOrchestrator {
       registry.health.recordFailure(model.provider, {
         affectsHealth: failure.retryable && !cancelled,
         isAuthError: failure.code === 'AUTH_ERROR',
+        authCause: authCauseOf(failure.context),
       });
 
       return {

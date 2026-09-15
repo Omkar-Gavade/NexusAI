@@ -85,6 +85,54 @@ describe('ModelRegistry availability', () => {
     expect(tracker.availability('openai', true, at + 16 * 60_000)).toBe('UNKNOWN');
   });
 
+  /*
+   * Observed live: DeepSeek answers 402 "Insufficient Balance" with a key that
+   * works. Both causes take the provider out of rotation for the same cooldown,
+   * but the reason a user reads must be true — "credentials were rejected" sent
+   * the reader looking for a key problem that did not exist.
+   */
+  it('says the account is the problem when that is what failed', () => {
+    const tracker = new ProviderHealthTracker();
+    tracker.recordFailure('deepseek', { affectsHealth: false, isAuthError: true, authCause: 'account' });
+
+    expect(tracker.availability('deepseek', true)).toBe('CONFIGURED_BUT_UNAVAILABLE');
+    const reason = tracker.reason('CONFIGURED_BUT_UNAVAILABLE', 'deepseek');
+    expect(reason).toMatch(/account/i);
+    expect(reason).not.toMatch(/credentials were rejected/i);
+  });
+
+  it('keeps the credential wording for a rejected key', () => {
+    const tracker = new ProviderHealthTracker();
+    tracker.recordFailure('openai', { affectsHealth: false, isAuthError: true });
+    expect(tracker.reason('CONFIGURED_BUT_UNAVAILABLE', 'openai')).toBe(
+      'The configured credentials were rejected.',
+    );
+  });
+
+  // One provider's empty account must not change what another provider reports.
+  it('keeps the cause per provider', () => {
+    const tracker = new ProviderHealthTracker();
+    tracker.recordFailure('deepseek', { affectsHealth: false, isAuthError: true, authCause: 'account' });
+    tracker.recordFailure('openai', { affectsHealth: false, isAuthError: true, authCause: 'credentials' });
+
+    expect(tracker.reason('CONFIGURED_BUT_UNAVAILABLE', 'deepseek')).toMatch(/account/i);
+    expect(tracker.reason('CONFIGURED_BUT_UNAVAILABLE', 'openai')).toBe(
+      'The configured credentials were rejected.',
+    );
+  });
+
+  // Topping the account up recovers it; the old cause must not linger.
+  it('clears the cause once a call succeeds', () => {
+    const tracker = new ProviderHealthTracker();
+    tracker.recordFailure('deepseek', { affectsHealth: false, isAuthError: true, authCause: 'account' });
+    tracker.recordSuccess('deepseek');
+    tracker.recordFailure('deepseek', { affectsHealth: false, isAuthError: true });
+
+    expect(tracker.reason('CONFIGURED_BUT_UNAVAILABLE', 'deepseek')).toBe(
+      'The configured credentials were rejected.',
+    );
+  });
+
   it('ignores failures that say nothing about the provider', () => {
     const tracker = new ProviderHealthTracker();
     for (let i = 0; i < 5; i += 1) {
