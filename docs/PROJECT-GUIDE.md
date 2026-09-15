@@ -304,14 +304,23 @@ sequenceDiagram
     R-->>O: synthesist
     O-->>C: event: synthesis_start
     O->>S: question + fenced responses
-    loop streaming
+    S-->>O: verdict block (withheld from the user)
+    O-->>C: event: agreement
+    loop answer streams
         S-->>O: token
         O-->>C: event: delta
     end
-    O-->>C: event: agreement
+    O-->>C: event: sources
     O->>DB: persist answer + provenance
     O-->>C: event: complete
 ```
+
+**Why `agreement` arrives before the text.** The synthesiser is instructed to
+open with a verdict block classifying each model as concurring or diverging.
+That block is machine notation, so the orchestrator withholds everything until
+it has been parsed — then emits `agreement`, then streams the answer. If the
+synthesiser ignores the format, stances stay `unknown` and the text is still the
+answer; nothing is guessed.
 
 ### Four things to call out
 
@@ -379,16 +388,24 @@ so both sides parse the same shape:
 
 ```
 start
-  → model_start   (×N)
-  → model_complete / model_error   (×N, as they land)
-  → synthesis_start
-  → delta         (×many)
-  → agreement
-  → sources
+  → model_start                      (×N, the plan, in fixed order)
+  → model_complete / model_error     (×N, as they land)
+  → synthesis_start                  (synthesis turns only)
+  → agreement                        (before any text — see §7)
+  → delta                            (×many)
+  → sources                          (always empty today — ADR-018)
   → complete
 ```
 
 Plus `error` and `cancelled` as terminal alternatives.
+
+**A direct or degraded turn** has no `synthesis_start`. It emits `agreement`
+and then the chosen (or surviving) model's whole response as a single `delta`
+— verified against a live run:
+
+```
+direct:    start → model_start → model_complete → agreement → delta → sources → complete
+```
 
 **Only the synthesis streams.** Individual models report once, whole. This is
 deliberate: their responses exist to be *compared*, not watched. Streaming six
@@ -565,31 +582,61 @@ erDiagram
         string displayName
         object preferences "theme, routingMode, pinnedModelId"
         Date createdAt
+        Date updatedAt
     }
     SESSIONS {
-        string tokenHash "unique, SHA-256"
-        string familyId "rotation lineage"
+        ObjectId _id
         ObjectId userId
+        string tokenHash "unique, SHA-256 of the refresh token"
+        string familyId "every token from one login"
         Date rotatedAt "null until rotated"
-        Date expiresAt "TTL index"
+        Date expiresAt "TTL index deletes the row"
+        Date createdAt
     }
     CONVERSATIONS {
         ObjectId _id
         ObjectId userId
         string title
+        int messageCount
+        Date createdAt
         Date updatedAt
     }
     MESSAGES {
         ObjectId _id
         ObjectId conversationId
-        string role "user | assistant"
-        string content
-        array slots "per-model provenance"
+        ObjectId userId "denormalised: auth is one query"
+        string role "user or assistant"
+        string content "assistant: the synthesis text"
+        string status
+        string clientMessageId "user messages only, idempotency"
+        object synthesisModel "ModelRef, null means answered directly"
+        array responses "one entry per planned model"
         object agreement "requested, responded, concur, diverge"
-        string synthesisModel "null = answered directly"
-        string clientMessageId "idempotency"
+        array sources
+        object metadata "latencyMs, firstTokenMs, tokens"
+        Date createdAt
     }
 ```
+
+### What one entry in `responses` holds
+
+Every model in the plan gets an entry — **including the ones that failed**. The
+array is in plan order, because position is what identifies a model on the
+provenance rail.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `model` | `ModelRef` | `{ modelId, provider, displayName }` |
+| `text` | string | That model's full response (empty if it failed) |
+| `outcome` | enum | `complete` · `failed` · `empty` · `cancelled` |
+| `stance` | enum | `concurs` · `diverges` · `unknown` — failed models are always `unknown` |
+| `latencyMs` | int | |
+| `inputTokens` / `outputTokens` | int or null | null when the provider does not report them |
+| `errorCode` | string or null | Why it failed, e.g. `MODEL_NOT_FOUND` |
+
+> **Naming trap worth knowing:** the frontend calls these `slots`. That is only its
+> view-model name — `answer-view.ts` does `message.responses.map(toSlot)`. The
+> persisted and wire field is `responses`.
 
 ### Indexes that matter
 
@@ -632,7 +679,7 @@ stateDiagram-v2
     UNKNOWN --> AVAILABLE: first success
     AVAILABLE --> TEMPORARILY_UNAVAILABLE: failures open the circuit
     TEMPORARILY_UNAVAILABLE --> UNKNOWN: after 60s cooldown
-    AVAILABLE --> CONFIGURED_BUT_UNAVAILABLE: credentials rejected
+    AVAILABLE --> CONFIGURED_BUT_UNAVAILABLE: key rejected or account unusable
     CONFIGURED_BUT_UNAVAILABLE --> UNKNOWN: after 15min cooldown
 ```
 
@@ -657,6 +704,22 @@ if (status === 403) {
 ```
 
 One model being unavailable should not poison five others.
+
+### A second one, found while verifying this guide
+
+DeepSeek answers **402 "Insufficient Balance"** with a key that works. Treating
+that like a rejected key is right — an operator must act, and the 15-minute
+re-check means topping the account up recovers it without a restart. But the
+reason shown in the model selector said *"The configured credentials were
+rejected"*, which is false for that case and sends the reader hunting for a key
+problem that doesn't exist.
+
+The fix records the **cause**, not just the time. The classifier tags a
+402/account-unusable failure `authCause: 'account'`; the health tracker stores
+it per provider; the reason reports *"The provider account cannot serve
+requests"* for that case and keeps the exact credential wording for a real 401.
+An integration test drives a real 402 through the classifier, orchestrator,
+tracker and registry and asserts what the client receives.
 
 ### Model catalog
 
