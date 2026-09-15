@@ -19,7 +19,7 @@
         "@nexusai/backend",
         "dev"
       ],
-      "port": 4000
+      "port": 8080
     }
   ]
 }
