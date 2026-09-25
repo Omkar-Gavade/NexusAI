@@ -612,6 +612,10 @@ export class ChatOrchestrator {
       'answering directly without synthesis',
     );
 
+    if (reason === 'synthesis exhausted') {
+      yield { type: 'synthesis_fallback' };
+    }
+
     yield {
       type: 'agreement',
       agreement: computeAgreement(this.summarise(plan, attempts, {})),

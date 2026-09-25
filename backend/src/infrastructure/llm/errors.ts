@@ -121,7 +121,10 @@ export function classifyTransportError(
 
   if (name === 'AbortError' || name === 'TimeoutError') {
     // Our own cancellation and a timeout both surface as AbortError; only the
-    // signal can tell them apart.
+    // signal's reason can tell them apart.
+    if (signal.aborted && signal.reason?.name === 'TimeoutError') {
+      return Errors.timeout(context);
+    }
     return signal.aborted ? Errors.cancelled() : Errors.timeout(context);
   }
   if (['ECONNREFUSED', 'ENOTFOUND', 'ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET'].includes(code)) {

@@ -161,6 +161,10 @@ export function reduce(state: StreamState, action: StreamAction): StreamState {
       if (isTerminal(state.phase)) return state;
       return { ...state, phase: 'synthesis', synthesisModel: event.model };
 
+    case 'synthesis_fallback':
+      if (isTerminal(state.phase)) return state;
+      return { ...state, phase: 'models', synthesisModel: null };
+
     case 'delta':
       // A delta before synthesis_start means the server reordered frames; take
       // the text rather than dropping the user's answer on the floor.
@@ -218,7 +222,11 @@ export function reduce(state: StreamState, action: StreamAction): StreamState {
       return {
         ...state,
         phase: 'error',
-        error: { code: event.code, message: event.message, partial: event.partial },
+        error: {
+          code: event.code,
+          message: event.message,
+          partial: event.partial && state.text.length > 0,
+        },
       };
 
     default: {

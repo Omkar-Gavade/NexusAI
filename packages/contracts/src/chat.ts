@@ -60,6 +60,8 @@ export const ChatEvent = z.discriminatedUnion('type', [
 
   z.object({ type: z.literal('synthesis_start'), model: ModelRef }),
 
+  z.object({ type: z.literal('synthesis_fallback') }),
+
   /** Synthesis text only. */
   z.object({ type: z.literal('delta'), text: z.string() }),
 

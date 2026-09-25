@@ -111,7 +111,7 @@ export const CATALOG: readonly ModelDefinition[] = [
     id: 'mistral-large',
     provider: 'mistral',
     providerDisplayName: 'Mistral',
-    providerModelId: 'mistral-large-latest',
+    providerModelId: 'mistral-medium-latest',
     displayName: 'Mistral Large',
     description: 'European-hosted general reasoning.',
     contextWindow: 128_000,
