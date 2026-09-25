@@ -64,7 +64,7 @@ describe('classifyProviderError', () => {
   // would either retry forever or disable a provider that was only throttled.
   it('keeps a rate limit distinct from an unpayable account', () => {
     const throttled = classifyProviderError(429, '{}', ctx);
-    expect(throttled.code).toBe('RATE_LIMITED');
+    expect(throttled.code).toBe('PROVIDER_UNAVAILABLE');
     expect(throttled.retryable).toBe(true);
   });
 
@@ -90,7 +90,7 @@ describe('classifyProviderError', () => {
 
   it('still reads a throttle as a throttle when the body mentions an account', () => {
     const body = JSON.stringify({ error: { message: 'Rate limit reached for your account' } });
-    expect(classifyProviderError(429, body, ctx).code).toBe('RATE_LIMITED');
+    expect(classifyProviderError(429, body, ctx).code).toBe('PROVIDER_UNAVAILABLE');
   });
 
   // The narrow matcher must not turn an ordinary bad request into an auth

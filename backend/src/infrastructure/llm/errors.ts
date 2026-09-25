@@ -75,30 +75,26 @@ export function classifyProviderError(
     return PLAN_RESTRICTED.test(lower) ? Errors.modelNotFound(ctx) : Errors.providerAuthError(ctx);
   }
 
-  // 402, and the equivalent said in words at another status. Observed live:
-  // DeepSeek answers "Insufficient Balance" with 402, which fell through to the
-  // generic retryable provider error — so the orchestrator would have retried a
-  // failure that can never succeed, on every turn, while the model stayed
-  // advertised as available. Classified as an auth failure because the
-  // consequence is identical: an operator must act, and until they do the
-  // provider is unusable. The 15-minute re-check means topping the account up
-  // recovers it without a restart.
-  // Ordered before the account check so a throttle that mentions an account
-  // state is still read as a throttle: one clears on its own, the other needs
-  // an operator, and treating the first as the second disables a healthy
-  // provider.
-  if (status === 429) return Errors.rateLimited(30);
+  // Tagged so health can say what actually happened. The consequence matches a
+  // rejected key — operator action, same cooldown — but the fact does not, and
+  // "credentials were rejected" is false for a valid key on an empty account.
+  // Must be checked before 429 because OpenAI uses 429 for both quota exhaustion
+  // and temporary rate limits, and treating quota exhaustion as a temporary
+  // rate limit traps the provider in a loop.
+  if (status === 402 || ACCOUNT_UNUSABLE.test(lower)) {
+    return Errors.providerAuthError({ ...ctx, authCause: 'account' });
+  }
+
+  // A genuine upstream rate limit. The provider is temporarily overwhelmed.
+  // Returning rateLimited here incorrectly tells the end user *they* sent too
+  // many requests, when the server is the one being throttled. Treating it as
+  // providerUnavailable keeps it retryable (circuit breaker will open and close)
+  // but correctly informs the user that the provider is the bottleneck.
+  if (status === 429) return Errors.providerUnavailable(ctx);
 
   // Request larger than the provider will accept — including a per-minute token
   // ceiling, which providers report against the request rather than the window.
   if (status === 413) return Errors.contextTooLong();
-
-  // Tagged so health can say what actually happened. The consequence matches a
-  // rejected key — operator action, same cooldown — but the fact does not, and
-  // "credentials were rejected" is false for a valid key on an empty account.
-  if (status === 402 || ACCOUNT_UNUSABLE.test(lower)) {
-    return Errors.providerAuthError({ ...ctx, authCause: 'account' });
-  }
   if (status === 404) return Errors.modelNotFound(ctx);
   if (status === 422 && /safety|policy|blocked|content/.test(lower))
     return Errors.contentPolicy(ctx);
