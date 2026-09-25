@@ -1,4 +1,4 @@
-import type { Agreement, ErrorCode, Message, ModelRef, Source } from '@nexusai/contracts';
+import { errorMessages, type Agreement, type ErrorCode, type Message, type ModelRef, type Source } from '@nexusai/contracts';
 import type { ModelSlot, StreamState } from './stream-reducer';
 
 /**
@@ -51,8 +51,18 @@ export function fromMessage(message: Message): AnswerView {
     error:
       message.status === 'failed' || message.status === 'failed_partial'
         ? {
-            code: 'INTERNAL',
-            message: 'This response was interrupted before it finished.',
+            code:
+              message.responses.length === 1 && message.responses[0].errorCode
+                ? message.responses[0].errorCode
+                : message.responses.some((r) => r.outcome === 'complete')
+                  ? 'SYNTHESIS_FAILED'
+                  : 'PROVIDER_UNAVAILABLE',
+            message:
+              message.responses.length === 1 && message.responses[0].errorCode
+                ? errorMessages[message.responses[0].errorCode]
+                : message.responses.some((r) => r.outcome === 'complete')
+                  ? errorMessages.SYNTHESIS_FAILED
+                  : errorMessages.PROVIDER_UNAVAILABLE,
             partial: message.status === 'failed_partial' || message.content.length > 0,
           }
         : null,
