@@ -52,13 +52,13 @@ export function fromMessage(message: Message): AnswerView {
       message.status === 'failed' || message.status === 'failed_partial'
         ? {
             code:
-              message.responses.length === 1 && message.responses[0].errorCode
+              message.responses.length === 1 && message.responses[0]?.errorCode
                 ? message.responses[0].errorCode
                 : message.responses.some((r) => r.outcome === 'complete')
                   ? 'SYNTHESIS_FAILED'
                   : 'PROVIDER_UNAVAILABLE',
             message:
-              message.responses.length === 1 && message.responses[0].errorCode
+              message.responses.length === 1 && message.responses[0]?.errorCode
                 ? errorMessages[message.responses[0].errorCode]
                 : message.responses.some((r) => r.outcome === 'complete')
                   ? errorMessages.SYNTHESIS_FAILED
