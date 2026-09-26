@@ -82,6 +82,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           'Content-Type': 'application/json',
           'x-api-key': this.apiKey ?? '',
           'anthropic-version': API_VERSION,
+          'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
         },
         body: JSON.stringify({
           model: request.model.providerModelId,

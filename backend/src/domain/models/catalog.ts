@@ -94,7 +94,7 @@ export const CATALOG: readonly ModelDefinition[] = [
     id: 'gemini-flash',
     provider: 'google',
     providerDisplayName: 'Google',
-    providerModelId: 'gemini-1.5-flash-002',
+    providerModelId: 'gemini-1.5-flash',
     displayName: 'Gemini 1.5 Flash',
     description: 'Fast responses across very large contexts.',
     contextWindow: 1_048_576,
