@@ -55,5 +55,25 @@ export {
   ChatRequest,
   ChatSelection,
   MESSAGE_MAX_CHARS,
+  SelectAnswerRequest,
+  SynthesizeMessageRequest,
 } from './chat.ts';
 export type { ChatEventType } from './chat.ts';
+
+export {
+  RoutingDecision,
+  TaskCategory,
+  buildRoutingReason,
+  classifyTask,
+  previewSmartRoute,
+  scoreCandidateForTask,
+} from './routing.ts';
+export type { RoutableCandidate, TaskClassification } from './routing.ts';
+
+export {
+  ModelPricing,
+  VERIFIED_MODEL_PRICING,
+  estimateModelCost,
+  getModelPricing,
+} from './pricing.ts';
+export type { CostEstimate } from './pricing.ts';

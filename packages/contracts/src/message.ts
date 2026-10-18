@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ErrorCode } from './error.ts';
+import { RoutingDecision } from './routing.ts';
 
 export const MessageRole = z.enum(['user', 'assistant']);
 export type MessageRole = z.infer<typeof MessageRole>;
@@ -41,8 +42,10 @@ export const ModelResponse = z.object({
   outcome: ModelOutcome,
   stance: Stance,
   latencyMs: z.number().int().nonnegative(),
+  firstTokenMs: z.number().int().nonnegative().nullable().optional(),
   inputTokens: z.number().int().nonnegative().nullable(),
   outputTokens: z.number().int().nonnegative().nullable(),
+  estimatedCostUsd: z.number().nonnegative().nullable().optional(),
   errorCode: ErrorCode.nullable(),
 });
 export type ModelResponse = z.infer<typeof ModelResponse>;
@@ -71,6 +74,7 @@ export const MessageMetadata = z.object({
   firstTokenMs: z.number().int().nonnegative().nullable(),
   inputTokens: z.number().int().nonnegative().nullable(),
   outputTokens: z.number().int().nonnegative().nullable(),
+  estimatedCostUsd: z.number().nonnegative().nullable().optional(),
 });
 export type MessageMetadata = z.infer<typeof MessageMetadata>;
 
@@ -80,6 +84,9 @@ export const Message = z.object({
   /** For an assistant message this is the synthesis, not any single model. */
   content: z.string(),
   status: MessageStatus,
+  mode: z.enum(['auto', 'manual', 'compare']).optional(),
+  selectedModelId: z.string().nullable().optional(),
+  routingDecision: RoutingDecision.nullable().optional(),
   synthesisModel: ModelRef.nullable(),
   responses: z.array(ModelResponse),
   agreement: Agreement.nullable(),

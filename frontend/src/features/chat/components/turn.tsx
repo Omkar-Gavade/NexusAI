@@ -10,9 +10,21 @@ import { UserMessage } from './user-message';
 export function Turn({
   message,
   onRegenerate,
+  onRetryModel,
+  onSelectAnswer,
+  onCombineAnswers,
+  onFollowUpAnswer,
+  combining = false,
+  retryingModelId = null,
 }: {
   message: Message;
   onRegenerate: (message: Message) => void;
+  onRetryModel?: ((message: Message, modelId: string) => void) | undefined;
+  onSelectAnswer?: ((message: Message, modelId: string | null) => void) | undefined;
+  onCombineAnswers?: ((message: Message) => void) | undefined;
+  onFollowUpAnswer?: ((message: Message, modelId: string, displayName: string) => void) | undefined;
+  combining?: boolean;
+  retryingModelId?: string | null;
 }) {
   if (message.role === 'user') {
     return <UserMessage content={message.content} />;
@@ -22,7 +34,20 @@ export function Turn({
     <AnswerBlock
       view={fromMessage(message)}
       onRegenerate={() => onRegenerate(message)}
-      onRetryModel={() => onRegenerate(message)}
+      onRetryModel={(modelId) =>
+        onRetryModel ? onRetryModel(message, modelId) : onRegenerate(message)
+      }
+      onSelectAnswer={
+        onSelectAnswer ? (modelId) => onSelectAnswer(message, modelId) : undefined
+      }
+      onCombineAnswers={onCombineAnswers ? () => onCombineAnswers(message) : undefined}
+      onFollowUpAnswer={
+        onFollowUpAnswer
+          ? (modelId, displayName) => onFollowUpAnswer(message, modelId, displayName)
+          : undefined
+      }
+      combining={combining}
+      retryingModelId={retryingModelId}
     />
   );
 }

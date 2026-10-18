@@ -1,4 +1,13 @@
-import { errorMessages, type Agreement, type ErrorCode, type Message, type ModelRef, type Source } from '@nexusai/contracts';
+import {
+  errorMessages,
+  estimateModelCost,
+  type Agreement,
+  type ErrorCode,
+  type Message,
+  type ModelRef,
+  type RoutingDecision,
+  type Source,
+} from '@nexusai/contracts';
 import type { ModelSlot, StreamState } from './stream-reducer';
 
 /**
@@ -11,25 +20,49 @@ import type { ModelSlot, StreamState } from './stream-reducer';
  * response looks like.
  */
 export interface AnswerView {
+  messageId?: string | null;
+  mode?: 'auto' | 'manual' | 'compare';
+  selectedModelId?: string | null;
+  routingDecision?: RoutingDecision | null;
   text: string;
   slots: ModelSlot[];
   agreement: Agreement | null;
   sources: Source[];
   synthesisModel: ModelRef | null;
   latencyMs: number | null;
+  firstTokenMs?: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  estimatedCostUsd?: number | null;
   streaming: boolean;
   cancelled: boolean;
   error: { code: ErrorCode; message: string; partial: boolean } | null;
 }
 
+function sumNullable(values: ReadonlyArray<number | null | undefined>): number | null {
+  const known = values.filter((v): v is number => v !== null && v !== undefined);
+  return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
+}
+
 export function fromStream(state: StreamState, slots: ModelSlot[]): AnswerView {
+  const inputTokens = sumNullable(slots.map((s) => s.inputTokens));
+  const outputTokens = sumNullable(slots.map((s) => s.outputTokens));
+  const totalCost = sumNullable(slots.map((s) => s.estimatedCostUsd));
   return {
+    messageId: state.messageId,
+    mode: state.mode ?? 'auto',
+    selectedModelId: null,
+    routingDecision: state.routingDecision ?? null,
     text: state.text,
     slots,
     agreement: state.agreement,
     sources: state.sources,
     synthesisModel: state.synthesisModel,
     latencyMs: state.latencyMs,
+    firstTokenMs: state.firstTokenMs,
+    inputTokens,
+    outputTokens,
+    estimatedCostUsd: totalCost !== null ? Number(totalCost.toFixed(8)) : null,
     streaming: state.phase === 'models' || state.phase === 'synthesis' || state.phase === 'starting',
     cancelled: state.phase === 'cancelled',
     error: state.error,
@@ -37,13 +70,31 @@ export function fromStream(state: StreamState, slots: ModelSlot[]): AnswerView {
 }
 
 export function fromMessage(message: Message): AnswerView {
+  const slots = message.responses.map(toSlot);
+  const inputTokens = message.metadata?.inputTokens ?? sumNullable(slots.map((s) => s.inputTokens));
+  const outputTokens =
+    message.metadata?.outputTokens ?? sumNullable(slots.map((s) => s.outputTokens));
+  const rawCost =
+    message.metadata?.estimatedCostUsd !== undefined
+      ? message.metadata.estimatedCostUsd
+      : sumNullable(slots.map((s) => s.estimatedCostUsd));
+  const estimatedCostUsd = rawCost !== null ? Number(rawCost.toFixed(8)) : null;
+
   return {
+    messageId: message.id,
+    mode: message.mode ?? 'auto',
+    selectedModelId: message.selectedModelId ?? null,
+    routingDecision: message.routingDecision ?? null,
     text: message.content,
-    slots: message.responses.map(toSlot),
+    slots,
     agreement: message.agreement,
     sources: message.sources,
     synthesisModel: message.synthesisModel,
     latencyMs: message.metadata?.latencyMs ?? null,
+    firstTokenMs: message.metadata?.firstTokenMs ?? null,
+    inputTokens,
+    outputTokens,
+    estimatedCostUsd,
     // History is never in flight: a row persisted mid-generation is read back
     // as failed, so `streaming` cannot be true here.
     streaming: false,
@@ -70,6 +121,11 @@ export function fromMessage(message: Message): AnswerView {
 }
 
 function toSlot(response: Message['responses'][number]): ModelSlot {
+  const estimatedCostUsd =
+    response.estimatedCostUsd !== undefined
+      ? response.estimatedCostUsd
+      : estimateModelCost(response.model.modelId, response.inputTokens, response.outputTokens)
+          .estimatedCostUsd;
   return {
     model: response.model,
     phase: response.outcome === 'failed' ? 'failed' : 'complete',
@@ -77,8 +133,10 @@ function toSlot(response: Message['responses'][number]): ModelSlot {
     outcome: response.outcome,
     stance: response.stance,
     latencyMs: response.latencyMs,
+    firstTokenMs: response.firstTokenMs ?? null,
     inputTokens: response.inputTokens,
     outputTokens: response.outputTokens,
+    estimatedCostUsd,
     errorCode: response.errorCode,
     errorMessage: null,
   };

@@ -1,11 +1,21 @@
 import type { FastifyInstance } from 'fastify';
-import { ChatRequest } from '@nexusai/contracts';
+import { z } from 'zod';
+import { ChatRequest, SynthesizeMessageRequest } from '@nexusai/contracts';
 import type { ChatOrchestrator } from '../../domain/orchestration/orchestrator.ts';
 import { requireUser } from '../middleware/authenticate.ts';
 import { createRateLimit, RULES, type RateLimiter } from '../middleware/rate-limit.ts';
 import { toAppError } from '../errors/error-handler.ts';
 import { SseWriter } from '../sse.ts';
 import { Errors } from '../../domain/errors.ts';
+
+const MessageParams = z.object({
+  id: z.string().regex(/^[a-f\d]{24}$/),
+  messageId: z.string().regex(/^[a-f\d]{24}$/),
+});
+
+const RetryModelBody = z.object({
+  modelId: z.string().min(1).max(80),
+});
 
 export function registerChatRoutes(
   app: FastifyInstance,
@@ -19,11 +29,13 @@ export function registerChatRoutes(
   /** Cheap guard against one account monopolising the provider pool. */
   const active = new Map<string, number>();
 
+  const chatPreHandler = {
+    preHandler: [deps.authenticate, createRateLimit(deps.limiter, RULES.chat, 'chat')] as never,
+  };
+
   app.post(
     '/api/chat/stream',
-    {
-      preHandler: [deps.authenticate, createRateLimit(deps.limiter, RULES.chat, 'chat')] as never,
-    },
+    chatPreHandler,
     async (request, reply) => {
       const user = requireUser(request);
       const body = ChatRequest.parse(request.body);
@@ -92,6 +104,50 @@ export function registerChatRoutes(
       }
 
       return reply;
+    },
+  );
+
+  app.post(
+    '/api/conversations/:id/messages/:messageId/synthesize',
+    chatPreHandler,
+    async (request, reply) => {
+      const user = requireUser(request);
+      const { id, messageId } = MessageParams.parse(request.params);
+      const body = SynthesizeMessageRequest.parse(request.body ?? {});
+
+      const controller = new AbortController();
+      request.raw.on('close', () => controller.abort());
+
+      const updated = await deps.orchestrator.synthesizeMessage(
+        user.id,
+        id,
+        messageId,
+        controller.signal,
+        body.modelIds,
+      );
+      return reply.send(updated);
+    },
+  );
+
+  app.post(
+    '/api/conversations/:id/messages/:messageId/retry-model',
+    chatPreHandler,
+    async (request, reply) => {
+      const user = requireUser(request);
+      const { id, messageId } = MessageParams.parse(request.params);
+      const { modelId } = RetryModelBody.parse(request.body);
+
+      const controller = new AbortController();
+      request.raw.on('close', () => controller.abort());
+
+      const updated = await deps.orchestrator.retryModel(
+        user.id,
+        id,
+        messageId,
+        modelId,
+        controller.signal,
+      );
+      return reply.send(updated);
     },
   );
 }

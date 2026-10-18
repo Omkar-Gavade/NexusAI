@@ -1,4 +1,11 @@
-import { isRoutable, type Model, type ModelRef, type RoutingMode } from '@nexusai/contracts';
+import {
+  isRoutable,
+  previewSmartRoute,
+  type Model,
+  type ModelRef,
+  type RoutingDecision,
+  type RoutingMode,
+} from '@nexusai/contracts';
 import type { Config } from '../../config/env.ts';
 import type { ProviderAdapter } from '../../infrastructure/llm/adapter.ts';
 import { CATALOG, type ModelDefinition } from './catalog.ts';
@@ -55,6 +62,41 @@ export class ModelRegistry {
       .toSorted((a, b) => b.quality - a.quality || a.rank - b.rank)
       .slice(0, limit)
       .toSorted((a, b) => a.rank - b.rank);
+  }
+
+  /**
+   * Task-aware Smart Router selection. Classifies the prompt deterministically,
+   * scores routable models by task suitability, capabilities, and provider
+   * health, and returns both the selected ModelDefinitions and the truthful
+   * RoutingDecision explanation.
+   */
+  routeTask(
+    prompt: string,
+    mode: RoutingMode,
+  ): { models: ModelDefinition[]; decision: RoutingDecision } {
+    const routableModels = this.routable();
+    const candidates = routableModels.map((m) => ({
+      id: m.id,
+      displayName: m.displayName,
+      providerId: m.provider,
+      availability: this.availabilityOf(m),
+      contextWindow: m.contextWindow,
+      capabilities: m.capabilities,
+    }));
+
+    const decision = previewSmartRoute(
+      prompt,
+      mode,
+      candidates,
+      this.config.MAX_MODELS_PER_REQUEST,
+    );
+
+    const byId = new Map(routableModels.map((m) => [m.id, m]));
+    const models = decision.selectedModelIds
+      .map((id) => byId.get(id))
+      .filter((m): m is ModelDefinition => m !== undefined);
+
+    return { models, decision };
   }
 
   /** Who writes the synthesis: the best routable model that can do it. */

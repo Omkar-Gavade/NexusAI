@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { RenameConversationRequest } from '@nexusai/contracts';
+import { RenameConversationRequest, SelectAnswerRequest } from '@nexusai/contracts';
 import type { ConversationService } from '../../application/conversation-service.ts';
 import { requireUser } from '../middleware/authenticate.ts';
 import { createRateLimit, RULES, type RateLimiter } from '../middleware/rate-limit.ts';
@@ -11,6 +11,10 @@ const Page = z.object({
 });
 
 const Params = z.object({ id: z.string().regex(/^[a-f\d]{24}$/) });
+const MessageParams = z.object({
+  id: z.string().regex(/^[a-f\d]{24}$/),
+  messageId: z.string().regex(/^[a-f\d]{24}$/),
+});
 
 export function registerConversationRoutes(
   app: FastifyInstance,
@@ -49,5 +53,13 @@ export function registerConversationRoutes(
     const { id } = Params.parse(request.params);
     const page = Page.parse(request.query);
     return reply.send(await deps.conversations.messages(user.id, id, page));
+  });
+
+  app.patch('/api/conversations/:id/messages/:messageId/selection', auth, async (request, reply) => {
+    const user = requireUser(request);
+    const { id, messageId } = MessageParams.parse(request.params);
+    const { selectedModelId } = SelectAnswerRequest.parse(request.body);
+    const updated = await deps.conversations.selectAnswer(user.id, id, messageId, selectedModelId);
+    return reply.send(updated);
   });
 }

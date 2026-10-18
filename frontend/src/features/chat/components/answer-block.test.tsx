@@ -245,3 +245,91 @@ describe('fromMessage — persisted failure reconstruction', () => {
     });
   });
 });
+
+describe('AnswerBlock — Smart Router, Model Arena & Performance/Cost', () => {
+  it('displays the Smart Router decision banner and manual override state', () => {
+    setup({
+      routingDecision: {
+        taskCategory: 'coding',
+        taskLabel: 'coding & technical task',
+        selectedModelIds: ['llama-groq'],
+        reason: 'Auto-selected GPT-OSS 120B — suitable for this coding & technical task.',
+        overridden: false,
+      },
+    });
+    expect(screen.getByTestId('turn-routing-reason')).toHaveTextContent(
+      /Auto-selected GPT-OSS 120B — suitable for this coding & technical task/i,
+    );
+  });
+
+  it('renders Model Arena comparison panels, allows selecting a preferred answer, and supports Combine answers', async () => {
+    const onSelectAnswer = vi.fn();
+    const onCombineAnswers = vi.fn();
+
+    render(
+      <AnswerBlock
+        view={view({
+          mode: 'compare',
+          text: '',
+          synthesisModel: null,
+          selectedModelId: null,
+          slots: [
+            slot({
+              id: 'gemini-flash',
+              model: { modelId: 'gemini-flash', provider: 'google', displayName: 'Gemini 2.5 Flash' },
+              text: 'Gemini answer text',
+            }),
+            slot({
+              id: 'llama-groq',
+              model: { modelId: 'llama-groq', provider: 'groq', displayName: 'GPT-OSS 120B' },
+              text: 'Groq answer text',
+            }),
+          ],
+          agreement: { requested: 2, responded: 2, concur: 0, diverge: 0 },
+        })}
+        onRegenerate={vi.fn()}
+        onRetryModel={vi.fn()}
+        onSelectAnswer={onSelectAnswer}
+        onCombineAnswers={onCombineAnswers}
+      />,
+    );
+
+    expect(screen.getByTestId('arena-comparison-grid')).toBeInTheDocument();
+
+    const selectButtons = screen.getAllByRole('button', { name: /select this answer/i });
+    expect(selectButtons).toHaveLength(2);
+    await userEvent.click(selectButtons[1]!);
+    expect(onSelectAnswer).toHaveBeenCalledWith('llama-groq');
+
+    await userEvent.click(screen.getByRole('button', { name: /combine answers/i }));
+    expect(onCombineAnswers).toHaveBeenCalled();
+  });
+
+  it('displays measured telemetry, verified USD cost estimates, and Not available / Unknown for missing data', async () => {
+    setup({
+      firstTokenMs: null,
+      latencyMs: 1450,
+      inputTokens: null,
+      outputTokens: null,
+      estimatedCostUsd: null,
+      slots: [
+        slot({
+          id: 'gemini-flash',
+          model: { modelId: 'gemini-flash', provider: 'google', displayName: 'Gemini 2.5 Flash' },
+          latencyMs: 1450,
+          inputTokens: null,
+          outputTokens: null,
+          estimatedCostUsd: null,
+        }),
+      ],
+    });
+
+    const perfToggle = screen.getByRole('button', { name: /performance and cost details/i });
+    await userEvent.click(perfToggle);
+
+    const panel = screen.getByTestId('performance-cost-panel');
+    expect(panel).toHaveTextContent(/Not available/);
+    expect(panel).toHaveTextContent(/Unknown/);
+    expect(panel).toHaveTextContent(/Google AI Developer Standard Pricing/);
+  });
+});

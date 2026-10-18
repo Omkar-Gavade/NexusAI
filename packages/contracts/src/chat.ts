@@ -2,12 +2,17 @@ import { z } from 'zod';
 import { ErrorCode } from './error.ts';
 import { RoutingMode } from './auth.ts';
 import { Agreement, ModelOutcome, ModelRef, Source, Stance } from './message.ts';
+import { RoutingDecision } from './routing.ts';
 
 export const MESSAGE_MAX_CHARS = 32_000;
 
 export const ChatSelection = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('auto'), routing: RoutingMode }),
   z.object({ mode: z.literal('manual'), modelId: z.string().min(1).max(80) }),
+  z.object({
+    mode: z.literal('compare'),
+    modelIds: z.array(z.string().min(1).max(80)).min(2).max(8),
+  }),
 ]);
 export type ChatSelection = z.infer<typeof ChatSelection>;
 
@@ -20,14 +25,23 @@ export const ChatRequest = z.object({
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;
 
+export const SelectAnswerRequest = z.object({
+  selectedModelId: z.string().min(1).max(80).nullable(),
+});
+export type SelectAnswerRequest = z.infer<typeof SelectAnswerRequest>;
+
+export const SynthesizeMessageRequest = z.object({
+  modelIds: z.array(z.string().min(1).max(80)).min(2).max(8).optional(),
+});
+export type SynthesizeMessageRequest = z.infer<typeof SynthesizeMessageRequest>;
+
 /**
  * The stream protocol.
  *
- * Per-model text is NOT streamed. Models emit `model_start` so the Provenance
- * Rail can show them in flight, then `model_complete` carrying the full text.
- * Only the synthesis streams token by token, because four columns of racing
- * text is a slot machine, and shipping every model's tokens costs four times
- * the bandwidth for output the user cannot read yet.
+ * Per-model text is NOT streamed in synthesis (`auto` / `manual`) modes. Models
+ * emit `model_start` so the Provenance Rail can show them in flight, then
+ * `model_complete` carrying the full text. In `compare` (Model Arena) mode,
+ * `arena_delta` events stream per-model chunks into each comparison panel.
  */
 export const ChatEvent = z.discriminatedUnion('type', [
   z.object({
@@ -36,10 +50,17 @@ export const ChatEvent = z.discriminatedUnion('type', [
     messageId: z.string(),
     /** Fixed order for the life of the message. Position identifies a model. */
     plan: z.array(ModelRef),
-    mode: z.enum(['auto', 'manual']),
+    mode: z.enum(['auto', 'manual', 'compare']),
+    routingDecision: RoutingDecision.nullable().optional(),
   }),
 
   z.object({ type: z.literal('model_start'), modelId: z.string() }),
+
+  z.object({
+    type: z.literal('arena_delta'),
+    modelId: z.string(),
+    text: z.string(),
+  }),
 
   z.object({
     type: z.literal('model_complete'),
@@ -47,8 +68,10 @@ export const ChatEvent = z.discriminatedUnion('type', [
     text: z.string(),
     outcome: ModelOutcome,
     latencyMs: z.number().int().nonnegative(),
+    firstTokenMs: z.number().int().nonnegative().nullable().optional(),
     inputTokens: z.number().int().nonnegative().nullable(),
     outputTokens: z.number().int().nonnegative().nullable(),
+    estimatedCostUsd: z.number().nonnegative().nullable().optional(),
   }),
 
   z.object({

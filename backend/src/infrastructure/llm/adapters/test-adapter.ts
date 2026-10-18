@@ -27,6 +27,8 @@ export class TestAdapter implements ProviderAdapter {
 
   /** Records which model ids were actually asked, for cancellation assertions. */
   readonly calls: string[] = [];
+  /** Records full generation requests, for follow-up history assertions. */
+  readonly requests: GenerationRequest[] = [];
   /** Model ids whose call was aborted before completing. */
   readonly aborted: string[] = [];
 
@@ -62,6 +64,7 @@ export class TestAdapter implements ProviderAdapter {
     this.streamBehaviours.clear();
     this.defaultBehaviour = { kind: 'succeed' };
     this.calls.length = 0;
+    this.requests.length = 0;
     this.aborted.length = 0;
   }
 
@@ -91,6 +94,7 @@ export class TestAdapter implements ProviderAdapter {
   ): Promise<string> {
     const modelId = request.model.id;
     this.calls.push(modelId);
+    this.requests.push(request);
 
     // A signal can already be aborted on arrival. addEventListener('abort')
     // never fires in that case, so it has to be checked up front — otherwise

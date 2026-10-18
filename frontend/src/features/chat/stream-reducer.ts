@@ -1,11 +1,13 @@
-import type {
-  Agreement,
-  ChatEvent,
-  ErrorCode,
-  ModelOutcome,
-  ModelRef,
-  Source,
-  Stance,
+import {
+  estimateModelCost,
+  type Agreement,
+  type ChatEvent,
+  type ErrorCode,
+  type ModelOutcome,
+  type ModelRef,
+  type RoutingDecision,
+  type Source,
+  type Stance,
 } from '@nexusai/contracts';
 
 export type StreamPhase =
@@ -24,14 +26,18 @@ export interface ModelSlot {
   outcome: ModelOutcome | null;
   stance: Stance;
   latencyMs: number | null;
+  firstTokenMs?: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  estimatedCostUsd?: number | null;
   errorCode: ErrorCode | null;
   errorMessage: string | null;
 }
 
 export interface StreamState {
   phase: StreamPhase;
+  mode?: 'auto' | 'manual' | 'compare';
+  routingDecision?: RoutingDecision | null;
   conversationId: string | null;
   messageId: string | null;
   /** Fixed order for the life of the message: position identifies a model. */
@@ -49,6 +55,8 @@ export interface StreamState {
 
 export const initialStreamState: StreamState = {
   phase: 'idle',
+  mode: 'auto',
+  routingDecision: null,
   conversationId: null,
   messageId: null,
   plan: [],
@@ -76,8 +84,10 @@ function slot(model: ModelRef): ModelSlot {
     outcome: null,
     stance: 'unknown',
     latencyMs: null,
+    firstTokenMs: null,
     inputTokens: null,
     outputTokens: null,
+    estimatedCostUsd: null,
     errorCode: null,
     errorMessage: null,
   };
@@ -120,6 +130,8 @@ export function reduce(state: StreamState, action: StreamAction): StreamState {
       return {
         ...initialStreamState,
         phase: 'models',
+        mode: event.mode,
+        routingDecision: event.routingDecision ?? null,
         conversationId: event.conversationId,
         messageId: event.messageId,
         plan: event.plan,
@@ -131,8 +143,26 @@ export function reduce(state: StreamState, action: StreamAction): StreamState {
       if (isTerminal(state.phase)) return state;
       return { ...state, models: patchSlot(state, event.modelId, { phase: 'running' }) };
 
-    case 'model_complete':
+    case 'arena_delta': {
       if (isTerminal(state.phase)) return state;
+      const existing = state.models[event.modelId];
+      if (!existing) return state;
+      return {
+        ...state,
+        models: patchSlot(state, event.modelId, {
+          phase: 'running',
+          text: existing.text + event.text,
+        }),
+      };
+    }
+
+    case 'model_complete': {
+      if (isTerminal(state.phase)) return state;
+      const estimatedCostUsd =
+        event.estimatedCostUsd !== undefined
+          ? event.estimatedCostUsd
+          : estimateModelCost(event.modelId, event.inputTokens, event.outputTokens)
+              .estimatedCostUsd;
       return {
         ...state,
         models: patchSlot(state, event.modelId, {
@@ -140,10 +170,13 @@ export function reduce(state: StreamState, action: StreamAction): StreamState {
           text: event.text,
           outcome: event.outcome,
           latencyMs: event.latencyMs,
+          firstTokenMs: event.firstTokenMs ?? null,
           inputTokens: event.inputTokens,
           outputTokens: event.outputTokens,
+          estimatedCostUsd,
         }),
       };
+    }
 
     case 'model_error':
       if (isTerminal(state.phase)) return state;
@@ -185,10 +218,15 @@ export function reduce(state: StreamState, action: StreamAction): StreamState {
       if (isTerminal(state.phase)) return state;
       return { ...state, sources: event.sources };
 
-    case 'complete':
+    case 'complete': {
       if (isTerminal(state.phase)) return state;
-      // Completing with no synthesis text is a failure wearing a success frame.
-      if (state.text.length === 0) {
+      const anyArenaModelSucceeded =
+        state.mode === 'compare' &&
+        Object.values(state.models).some(
+          (m) => m.outcome === 'complete' && m.text.trim().length > 0,
+        );
+      // Completing with no synthesis text in synthesis modes is a failure wearing a success frame.
+      if (state.text.length === 0 && !anyArenaModelSucceeded) {
         return {
           ...state,
           phase: 'error',
@@ -207,6 +245,7 @@ export function reduce(state: StreamState, action: StreamAction): StreamState {
         latencyMs: event.latencyMs,
         firstTokenMs: event.firstTokenMs,
       };
+    }
 
     case 'cancelled':
       if (state.phase === 'complete' || state.phase === 'error') return state;

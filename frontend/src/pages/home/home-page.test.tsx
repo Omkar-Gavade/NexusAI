@@ -354,3 +354,51 @@ describe('MarketingNav', () => {
     for (const href of anchors) expect(container.querySelector(href)).not.toBeNull();
   });
 });
+
+describe('HomePage — Smart Router, Model Arena & Performance Transparency', () => {
+  it('renders an interactive HeroComposer that classifies tasks and toggles between Standard and Compare modes', async () => {
+    const user = userEvent.setup();
+    setup();
+
+    const composer = screen.getByTestId('homepage-composer');
+    expect(composer).toBeInTheDocument();
+    expect(screen.getByTestId('homepage-routing-preview')).toHaveTextContent(
+      /Auto-selected Gemini 2\.5 Flash/i,
+    );
+
+    await user.click(within(composer).getByRole('button', { name: /^coding$/i }));
+    expect(screen.getByTestId('homepage-routing-preview')).toHaveTextContent(
+      /Auto-selected GPT-OSS 120B — suitable for this coding & debugging question/i,
+    );
+
+    await user.click(
+      within(composer).getByRole('button', { name: /compare · model arena/i }),
+    );
+    expect(screen.getByTestId('homepage-arena-preview')).toBeInTheDocument();
+  });
+
+  it('renders the interactive Model Arena preview with answer selection and on-demand synthesis', async () => {
+    const user = userEvent.setup();
+    setup();
+
+    const arena = screen.getByTestId('homepage-model-arena-preview');
+    expect(arena).toHaveTextContent(/ILLUSTRATIVE PREVIEW — NOT LIVE MODEL OUTPUT/i);
+
+    const selectButtons = within(arena).getAllByRole('button', { name: /select this answer/i });
+    expect(selectButtons.length).toBeGreaterThan(0);
+    await user.click(selectButtons[0]!);
+
+    await user.click(within(arena).getByRole('button', { name: /combine answers/i }));
+    expect(screen.getByTestId('homepage-arena-combined-synthesis')).toBeInTheDocument();
+  });
+
+  it('exposes performance and cost transparency metrics including Not available / Unknown states', () => {
+    setup();
+    const perf = screen.getByTestId('homepage-performance-transparency');
+    expect(perf).toBeInTheDocument();
+    expect(perf).toHaveTextContent(/FIRST TOKEN/i);
+    expect(perf).toHaveTextContent(/EST\. COST/i);
+    expect(perf).toHaveTextContent(/Not available/);
+    expect(perf).toHaveTextContent(/Unknown/);
+  });
+});

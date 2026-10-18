@@ -1,9 +1,59 @@
-import { ChatEvent, MessageListResponse, type ChatRequest } from '@nexusai/contracts';
+import {
+  ChatEvent,
+  Message,
+  MessageListResponse,
+  type ChatRequest,
+} from '@nexusai/contracts';
 import { json, request, toApiError } from '@/lib/http';
 import { readSSE } from '@/lib/sse';
 
 export function fetchMessages(conversationId: string) {
   return json(`/conversations/${conversationId}/messages`, MessageListResponse);
+}
+
+export function selectMessageAnswer(
+  conversationId: string,
+  messageId: string,
+  selectedModelId: string | null,
+) {
+  return json(
+    `/conversations/${conversationId}/messages/${messageId}/selection`,
+    Message,
+    {
+      method: 'PATCH',
+      body: { selectedModelId },
+    },
+  );
+}
+
+export function synthesizeMessageAnswers(
+  conversationId: string,
+  messageId: string,
+  modelIds?: string[],
+) {
+  return json(
+    `/conversations/${conversationId}/messages/${messageId}/synthesize`,
+    Message,
+    {
+      method: 'POST',
+      body: modelIds ? { modelIds } : {},
+    },
+  );
+}
+
+export function retryMessageModel(
+  conversationId: string,
+  messageId: string,
+  modelId: string,
+) {
+  return json(
+    `/conversations/${conversationId}/messages/${messageId}/retry-model`,
+    Message,
+    {
+      method: 'POST',
+      body: { modelId },
+    },
+  );
 }
 
 /**

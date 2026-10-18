@@ -63,9 +63,53 @@ export class MessageRepository {
     return this.messages.findOne({ userId: new ObjectId(userId), clientMessageId });
   }
 
+  async findByIdOwned(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<MessageDoc | null> {
+    if (!ObjectId.isValid(conversationId) || !ObjectId.isValid(messageId)) return null;
+    return this.messages.findOne({
+      _id: new ObjectId(messageId),
+      conversationId: new ObjectId(conversationId),
+      userId: new ObjectId(userId),
+    });
+  }
+
+  async findPrecedingUserMessage(
+    conversationId: string,
+    assistantId: ObjectId,
+    beforeDate: Date,
+  ): Promise<MessageDoc | null> {
+    if (!ObjectId.isValid(conversationId)) return null;
+    return this.messages.findOne(
+      {
+        conversationId: new ObjectId(conversationId),
+        role: 'user',
+        createdAt: { $lte: beforeDate },
+        _id: { $lt: assistantId },
+      },
+      { sort: { createdAt: -1, _id: -1 } },
+    );
+  }
+
   async finalise(
     messageId: ObjectId,
-    patch: Partial<Pick<MessageDoc, 'content' | 'status' | 'responses' | 'agreement' | 'sources' | 'metadata' | 'synthesisModel'>>,
+    patch: Partial<
+      Pick<
+        MessageDoc,
+        | 'content'
+        | 'status'
+        | 'mode'
+        | 'selectedModelId'
+        | 'routingDecision'
+        | 'responses'
+        | 'agreement'
+        | 'sources'
+        | 'metadata'
+        | 'synthesisModel'
+      >
+    >,
   ): Promise<void> {
     await this.messages.updateOne({ _id: messageId }, { $set: patch });
   }

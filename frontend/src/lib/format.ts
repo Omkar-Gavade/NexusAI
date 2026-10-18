@@ -10,9 +10,30 @@ export function latency(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+export function nullableLatency(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return 'Not available';
+  return latency(ms);
+}
+
 export function tokens(count: number): string {
   if (count < 1000) return String(count);
   return `${(count / 1000).toFixed(count < 10_000 ? 1 : 0)}k`;
+}
+
+export function nullableTokens(count: number | null | undefined): string {
+  if (count === null || count === undefined) return 'Not available';
+  return tokens(count);
+}
+
+/**
+ * Formats a calculated cost estimate in USD. Never displays a zero-cost claim
+ * or fabricated value: missing or non-positive values report as `Unknown`.
+ */
+export function estimatedCost(usd: number | null | undefined): string {
+  if (usd === null || usd === undefined || usd <= 0) return 'Unknown';
+  if (usd < 0.0001) return `~$${usd.toFixed(6)} est.`;
+  if (usd < 0.01) return `~$${usd.toFixed(4)} est.`;
+  return `~$${usd.toFixed(3)} est.`;
 }
 
 export function contextWindow(size: number): string {

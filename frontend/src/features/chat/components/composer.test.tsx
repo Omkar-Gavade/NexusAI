@@ -114,4 +114,88 @@ describe('Composer', () => {
     expect(attach).toBeDisabled();
     expect(attach).toHaveAccessibleName(/not available yet/i);
   });
+
+  it('shows the live Smart Router indicator in Standard auto mode and updates as the prompt changes', async () => {
+    const client = createTestQueryClient();
+    client.setQueryData(
+      ['models'],
+      catalog([
+        model({ id: 'gemini-flash', displayName: 'Gemini 2.5 Flash', provider: { id: 'google', displayName: 'Google' } }),
+        model({ id: 'llama-groq', displayName: 'GPT-OSS 120B', provider: { id: 'groq', displayName: 'Groq' } }),
+      ]),
+    );
+    render(
+      <Composer
+        selection={{ mode: 'auto', routing: 'single' }}
+        onSelectionChange={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        streaming={false}
+        disabled={false}
+      />,
+      { client },
+    );
+
+    const indicator = screen.getByTestId('smart-routing-indicator');
+    expect(indicator).toHaveTextContent(/Auto-selected Gemini 2\.5 Flash/i);
+
+    await userEvent.type(
+      screen.getByLabelText(/ask anything/i),
+      'Debug this TypeScript compiler error in my function',
+    );
+    expect(screen.getByTestId('smart-routing-indicator')).toHaveTextContent(
+      /Auto-selected GPT-OSS 120B — suitable for this coding & debugging question/i,
+    );
+  });
+
+  it('switches between Standard and Compare modes and enforces at least 2 models in Compare mode', async () => {
+    const onSelectionChange = vi.fn();
+    const client = createTestQueryClient();
+    client.setQueryData(
+      ['models'],
+      catalog([
+        model({ id: 'gemini-flash', displayName: 'Gemini 2.5 Flash' }),
+        model({ id: 'llama-groq', displayName: 'GPT-OSS 120B' }),
+        model({ id: 'gpt-4o', displayName: 'GPT-4o' }),
+      ]),
+    );
+    const { rerender } = render(
+      <Composer
+        selection={{ mode: 'auto', routing: 'single' }}
+        onSelectionChange={onSelectionChange}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        streaming={false}
+        disabled={false}
+      />,
+      { client },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^compare$/i }));
+    expect(onSelectionChange).toHaveBeenCalledWith({
+      mode: 'compare',
+      modelIds: ['gemini-flash', 'llama-groq', 'gpt-4o'],
+    });
+
+    rerender(
+      <Composer
+        selection={{ mode: 'compare', modelIds: ['gemini-flash', 'llama-groq'] }}
+        onSelectionChange={onSelectionChange}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        streaming={false}
+        disabled={false}
+      />,
+    );
+
+    expect(screen.getByRole('group', { name: /arena comparison models/i })).toBeInTheDocument();
+  });
+
+  it('renders the follow-up context banner when continuing from a selected Arena answer', () => {
+    setup({
+      followUpContext: { modelName: 'GPT-OSS 120B' },
+    });
+    expect(screen.getByText(/Continuing with selected answer from/i)).toBeInTheDocument();
+    expect(screen.getByText('GPT-OSS 120B')).toBeInTheDocument();
+  });
 });

@@ -19,6 +19,9 @@ export const routes = {
   loginWithNext: (next: string) => `/login?next=${encodeURIComponent(next)}`,
 } as const;
 
+export const HOMEPAGE_DRAFT_STORAGE_KEY = 'nexusai:homepage-draft';
+
+
 /**
  * Path patterns for the router's own table. Separate from `routes` because a
  * router declares patterns while callers navigate to concrete paths — and the

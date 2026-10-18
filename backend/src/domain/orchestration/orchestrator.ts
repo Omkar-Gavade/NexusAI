@@ -1,17 +1,23 @@
 import { ObjectId } from 'mongodb';
 import { authCauseOf } from '../models/health.ts';
-import type {
-  ChatEvent,
-  MessageStatus,
-  ModelOutcome,
-  RoutingMode,
-  Stance,
+import {
+  classifyTask,
+  estimateModelCost,
+  isRoutable,
+  type ChatEvent,
+  type Message,
+  type MessageStatus,
+  type ModelOutcome,
+  type RoutingDecision,
+  type RoutingMode,
+  type Stance,
 } from '@nexusai/contracts';
 import type { Config } from '../../config/env.ts';
 import type { Logger } from '../../infrastructure/observability/logger.ts';
 import type { ConversationRepository } from '../../infrastructure/repositories/conversation-repository.ts';
 import type { MessageRepository } from '../../infrastructure/repositories/message-repository.ts';
 import type { ModelResponseDoc } from '../../infrastructure/repositories/types.ts';
+import { toWireMessage } from '../../application/conversation-service.ts';
 import { AppError, Errors, isAppError } from '../errors.ts';
 import type { ModelDefinition } from '../models/catalog.ts';
 import type { ModelRegistry } from '../models/registry.ts';
@@ -25,7 +31,8 @@ export interface OrchestratorRequest {
   readonly clientMessageId: string;
   readonly selection:
     | { mode: 'auto'; routing: RoutingMode }
-    | { mode: 'manual'; modelId: string };
+    | { mode: 'manual'; modelId: string }
+    | { mode: 'compare'; modelIds: string[] };
   readonly requestId: string;
 }
 
@@ -34,8 +41,10 @@ interface ModelAttempt {
   text: string;
   outcome: ModelOutcome;
   latencyMs: number;
+  firstTokenMs: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  estimatedCostUsd: number | null;
   errorCode: string | null;
 }
 
@@ -102,6 +111,7 @@ export class ChatOrchestrator {
   async *run(request: OrchestratorRequest, signal: AbortSignal): AsyncGenerator<ChatEvent> {
     const { config, registry, messages, logger } = this.deps;
     const startedAt = Date.now();
+    const turnMode = request.selection.mode;
 
     // Idempotency first: the same ULID twice is a double-submit or a network
     // retry, both of which would otherwise bill two generations and produce two
@@ -110,7 +120,7 @@ export class ChatOrchestrator {
     const existing = await messages.findByClientMessageId(request.userId, request.clientMessageId);
     if (existing) throw Errors.duplicateRequest();
 
-    const plan = this.resolvePlan(request);
+    const { plan, routingDecision } = this.resolvePlan(request);
 
     // For an existing conversation, ownership is settled before anything is
     // written. For a new one, only the id is reserved here — the row itself is
@@ -159,6 +169,9 @@ export class ChatOrchestrator {
       role: 'assistant',
       content: '',
       status: 'failed',
+      mode: turnMode,
+      selectedModelId: null,
+      routingDecision,
       clientMessageId: null,
       synthesisModel: null,
       responses: [],
@@ -173,12 +186,14 @@ export class ChatOrchestrator {
       conversationId,
       messageId: assistantId.toHexString(),
       plan: plan.map((m) => registry.ref(m)),
-      mode: request.selection.mode,
+      mode: turnMode,
+      routingDecision,
     };
 
     // --- Model fan-out ------------------------------------------------------
     const attempts = new Map<string, ModelAttempt>();
     const pending: Array<Promise<void>> = [];
+    let firstModelCompleteMs: number | null = null;
 
     for (const model of plan) yield { type: 'model_start', modelId: model.id };
 
@@ -186,7 +201,16 @@ export class ChatOrchestrator {
     // Starting paid provider calls for an answer nobody will read is the exact
     // waste cancellation exists to prevent.
     if (signal.aborted) {
-      yield* this.finaliseCancelled(assistantId, conversationId, attempts, plan, startedAt);
+      yield* this.finaliseCancelled(
+        assistantId,
+        conversationId,
+        attempts,
+        plan,
+        startedAt,
+        '',
+        turnMode,
+        routingDecision,
+      );
       return;
     }
 
@@ -197,6 +221,7 @@ export class ChatOrchestrator {
     const runOne = async (model: ModelDefinition): Promise<void> => {
       const attempt = await this.callModel(model, request.message, history, signal);
       attempts.set(model.id, attempt);
+      firstModelCompleteMs ??= Date.now() - startedAt;
 
       // Per-model timing, on the model's own completion rather than the turn's.
       // Ids only: prompts and responses never reach the log.
@@ -212,6 +237,14 @@ export class ChatOrchestrator {
         'model call finished',
       );
 
+      if (turnMode === 'compare' && attempt.outcome === 'complete' && attempt.text) {
+        channel.push({
+          type: 'arena_delta',
+          modelId: model.id,
+          text: attempt.text,
+        });
+      }
+
       channel.push(
         attempt.outcome === 'complete' || attempt.outcome === 'empty'
           ? {
@@ -220,8 +253,10 @@ export class ChatOrchestrator {
               text: attempt.text,
               outcome: attempt.outcome,
               latencyMs: attempt.latencyMs,
+              firstTokenMs: attempt.firstTokenMs,
               inputTokens: attempt.inputTokens,
               outputTokens: attempt.outputTokens,
+              estimatedCostUsd: attempt.estimatedCostUsd,
             }
           : {
               type: 'model_error',
@@ -268,11 +303,20 @@ export class ChatOrchestrator {
     if (fanoutError) throw fanoutError;
 
     if (signal.aborted) {
-      yield* this.finaliseCancelled(assistantId, conversationId, attempts, plan, startedAt);
+      yield* this.finaliseCancelled(
+        assistantId,
+        conversationId,
+        attempts,
+        plan,
+        startedAt,
+        '',
+        turnMode,
+        routingDecision,
+      );
       return;
     }
 
-    // --- Synthesis ----------------------------------------------------------
+    // --- Synthesis / Arena Resolution ---------------------------------------
     const contributions = plan
       .map((model) => attempts.get(model.id))
       .filter((a): a is ModelAttempt => Boolean(a && a.outcome === 'complete' && a.text.trim()))
@@ -282,6 +326,8 @@ export class ChatOrchestrator {
       await this.persist(assistantId, conversationId, {
         content: '',
         status: 'failed',
+        mode: turnMode,
+        routingDecision,
         attempts,
         plan,
         stances: {},
@@ -304,6 +350,53 @@ export class ChatOrchestrator {
       throw only
         ? Errors.modelUnavailable(only.displayName, { reason: 'no usable response' })
         : Errors.providerUnavailable({ reason: 'no model returned a usable response' });
+    }
+
+    // In Model Arena (`compare`) mode, responses are presented side by side so
+    // the user can inspect, select a preferred answer, or explicitly request
+    // synthesis via "Combine answers".
+    if (turnMode === 'compare') {
+      yield {
+        type: 'agreement',
+        agreement: computeAgreement(this.summarise(plan, attempts, {})),
+        stances: this.fullStances(plan, attempts, {}),
+      };
+      yield { type: 'sources', sources: [] };
+
+      const elapsed = Date.now() - startedAt;
+      await this.persist(assistantId, conversationId, {
+        content: '',
+        status: 'complete',
+        mode: turnMode,
+        routingDecision,
+        attempts,
+        plan,
+        stances: {},
+        synthesisModel: null,
+        startedAt,
+        firstTokenMs: firstModelCompleteMs ?? elapsed,
+      });
+
+      logger.info(
+        {
+          requestId: request.requestId,
+          conversationId,
+          messageId: assistantId.toHexString(),
+          mode: turnMode,
+          planned: plan.length,
+          responded: contributions.length,
+          durationMs: elapsed,
+        },
+        'arena comparison turn completed',
+      );
+
+      yield {
+        type: 'complete',
+        messageId: assistantId.toHexString(),
+        latencyMs: elapsed,
+        firstTokenMs: firstModelCompleteMs ?? elapsed,
+      };
+      return;
     }
 
     // The synthesis stage is a single point of failure for a turn whose models
@@ -354,6 +447,8 @@ export class ChatOrchestrator {
         startedAt,
         request.requestId,
         contributions.length === 1 ? 'single response' : 'no synthesist available',
+        turnMode,
+        routingDecision,
       );
       return;
     }
@@ -481,6 +576,8 @@ export class ChatOrchestrator {
           startedAt,
           request.requestId,
           'synthesis exhausted',
+          turnMode,
+          routingDecision,
         );
         return;
       }
@@ -490,6 +587,8 @@ export class ChatOrchestrator {
       await this.persist(assistantId, conversationId, {
         content: emitted,
         status: emitted ? 'failed_partial' : 'failed',
+        mode: turnMode,
+        routingDecision,
         attempts,
         plan,
         stances,
@@ -504,7 +603,16 @@ export class ChatOrchestrator {
     }
 
     if (signal.aborted) {
-      yield* this.finaliseCancelled(assistantId, conversationId, attempts, plan, startedAt, emitted);
+      yield* this.finaliseCancelled(
+        assistantId,
+        conversationId,
+        attempts,
+        plan,
+        startedAt,
+        emitted,
+        turnMode,
+        routingDecision,
+      );
       return;
     }
 
@@ -531,6 +639,8 @@ export class ChatOrchestrator {
       await this.persist(assistantId, conversationId, {
         content: '',
         status: 'failed',
+        mode: turnMode,
+        routingDecision,
         attempts,
         plan,
         stances,
@@ -544,6 +654,8 @@ export class ChatOrchestrator {
     await this.persist(assistantId, conversationId, {
       content: emitted,
       status: 'complete',
+      mode: turnMode,
+      routingDecision,
       attempts,
       plan,
       stances,
@@ -573,6 +685,223 @@ export class ChatOrchestrator {
     };
   }
 
+  /**
+   * Combine completed model responses on an existing Arena/multi-model message
+   * using the standard synthesis pipeline and persist the result.
+   */
+  async synthesizeMessage(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    signal: AbortSignal,
+    filterModelIds?: readonly string[],
+  ): Promise<Message> {
+    const { config, registry, messages, logger } = this.deps;
+    const doc = await messages.findByIdOwned(userId, conversationId, messageId);
+    if (!doc || doc.role !== 'assistant') throw Errors.notFound();
+
+    const allowedIds = filterModelIds ? new Set(filterModelIds) : null;
+    const contributions: Array<{ model: ModelDefinition; text: string }> = [];
+
+    for (const r of doc.responses) {
+      if (r.outcome !== 'complete' || !r.text.trim()) continue;
+      if (allowedIds && !allowedIds.has(r.model.modelId)) continue;
+      const def = registry.find(r.model.modelId);
+      if (def) contributions.push({ model: def, text: r.text });
+    }
+
+    if (contributions.length < 2) {
+      throw Errors.validation([
+        {
+          path: 'modelIds',
+          message: 'At least two completed model responses are required to combine answers',
+        },
+      ]);
+    }
+
+    const userMsg = await messages.findPrecedingUserMessage(conversationId, doc._id, doc.createdAt);
+    const question = userMsg?.content ?? 'Synthesise the responses below.';
+
+    const failedIds = doc.responses
+      .filter((r) => r.outcome !== 'complete')
+      .map((r) => r.model.modelId);
+    const ineligible = [...failedIds];
+
+    let synthesist = registry.synthesisModel(ineligible);
+    if (!synthesist) throw Errors.noModelAvailable();
+
+    let raw = '';
+    for (;;) {
+      ineligible.push(synthesist.id);
+      const adapter = registry.adapterFor(synthesist);
+      if (!adapter) throw Errors.noModelAvailable();
+
+      const synthesisSignal = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(config.SYNTHESIS_TIMEOUT_MS),
+      ]);
+
+      try {
+        const prompt = buildSynthesisMessages(question, contributions);
+        const result = await adapter.generate(
+          {
+            model: synthesist,
+            messages: [
+              { role: 'system', content: prompt.system },
+              { role: 'user', content: prompt.user },
+            ],
+            maxOutputTokens: synthesist.maxOutputTokens,
+            temperature: 0.3,
+          },
+          synthesisSignal,
+        );
+        raw = result.text;
+        registry.health.recordSuccess(synthesist.provider);
+        break;
+      } catch (error) {
+        const failure = isAppError(error) ? error : Errors.synthesisFailed({ cause: String(error) });
+        registry.health.recordFailure(synthesist.provider, {
+          affectsHealth: failure.retryable,
+          isAuthError: failure.code === 'AUTH_ERROR',
+          authCause: authCauseOf(failure.context),
+        });
+        const alternative =
+          !signal.aborted && failure.code !== 'CANCELLED'
+            ? registry.synthesisModel(ineligible)
+            : undefined;
+        if (alternative) {
+          logger.warn(
+            { messageId, failed: synthesist.id, fallback: alternative.id },
+            'arena synthesis failed over to another model',
+          );
+          synthesist = alternative;
+          continue;
+        }
+        throw failure;
+      }
+    }
+
+    const parsed = parseVerdicts(raw);
+    const content = (parsed.remainder || raw).trim();
+    if (!content) throw Errors.synthesisFailed({ reason: 'synthesis produced no text' });
+
+    const stances = parsed.stances;
+    const updatedResponses: ModelResponseDoc[] = doc.responses.map((r) => {
+      const responded = r.outcome === 'complete' && Boolean(r.text.trim());
+      return {
+        ...r,
+        stance: responded ? (stances[r.model.modelId] ?? 'unknown') : 'unknown',
+      };
+    });
+
+    const summary: OutcomeSummary[] = updatedResponses.map((r) => ({
+      modelId: r.model.modelId,
+      responded: r.outcome === 'complete' && Boolean(r.text.trim()),
+      stance: r.stance,
+    }));
+    const agreement = computeAgreement(summary);
+    const synthesisRef = registry.ref(synthesist);
+
+    await messages.finalise(doc._id, {
+      content,
+      synthesisModel: synthesisRef,
+      responses: updatedResponses,
+      agreement,
+    });
+
+    return toWireMessage({
+      ...doc,
+      content,
+      synthesisModel: synthesisRef,
+      responses: updatedResponses,
+      agreement,
+    });
+  }
+
+  /**
+   * Re-runs a single model on an existing assistant turn without erasing or
+   * interrupting the other models' responses.
+   */
+  async retryModel(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    modelId: string,
+    signal: AbortSignal,
+  ): Promise<Message> {
+    const { registry, messages } = this.deps;
+    const doc = await messages.findByIdOwned(userId, conversationId, messageId);
+    if (!doc || doc.role !== 'assistant') throw Errors.notFound();
+
+    const model = registry.find(modelId);
+    if (!model) throw Errors.modelNotFound({ modelId });
+    if (!doc.responses.some((r) => r.model.modelId === modelId)) {
+      throw Errors.modelNotFound({ modelId });
+    }
+
+    const userMsg = await messages.findPrecedingUserMessage(conversationId, doc._id, doc.createdAt);
+    const question = userMsg?.content ?? '';
+    if (!question) throw Errors.notFound();
+
+    const attempt = await this.callModel(model, question, [], signal);
+    const newResponseDoc: ModelResponseDoc = {
+      model: registry.ref(model),
+      text: attempt.text,
+      outcome: attempt.outcome,
+      stance: 'unknown',
+      latencyMs: attempt.latencyMs,
+      firstTokenMs: attempt.firstTokenMs,
+      inputTokens: attempt.inputTokens,
+      outputTokens: attempt.outputTokens,
+      estimatedCostUsd: attempt.estimatedCostUsd,
+      errorCode: attempt.errorCode,
+    };
+
+    const updatedResponses = doc.responses.map((r) =>
+      r.model.modelId === modelId ? newResponseDoc : r,
+    );
+    const summary: OutcomeSummary[] = updatedResponses.map((r) => ({
+      modelId: r.model.modelId,
+      responded: r.outcome === 'complete' && Boolean(r.text.trim()),
+      stance: r.stance,
+    }));
+    const agreement = computeAgreement(summary);
+    const anyComplete = updatedResponses.some(
+      (r) => r.outcome === 'complete' && Boolean(r.text.trim()),
+    );
+    const status: MessageStatus = anyComplete ? 'complete' : doc.status;
+
+    const knownCosts = updatedResponses
+      .map((r) => r.estimatedCostUsd ?? null)
+      .filter((c): c is number => c !== null);
+    const metadata = doc.metadata
+      ? {
+          ...doc.metadata,
+          inputTokens: sum(updatedResponses.map((r) => r.inputTokens)),
+          outputTokens: sum(updatedResponses.map((r) => r.outputTokens)),
+          estimatedCostUsd:
+            knownCosts.length > 0
+              ? Number(knownCosts.reduce((a, b) => a + b, 0).toFixed(8))
+              : null,
+        }
+      : null;
+
+    await messages.finalise(doc._id, {
+      status,
+      responses: updatedResponses,
+      agreement,
+      metadata,
+    });
+
+    return toWireMessage({
+      ...doc,
+      status,
+      responses: updatedResponses,
+      agreement,
+      metadata,
+    });
+  }
+
   // --- helpers -------------------------------------------------------------
 
   /**
@@ -598,6 +927,8 @@ export class ChatOrchestrator {
     startedAt: number,
     requestId: string,
     reason: string,
+    mode: 'auto' | 'manual' | 'compare' = 'auto',
+    routingDecision: RoutingDecision | null = null,
   ): AsyncGenerator<ChatEvent> {
     const { logger } = this.deps;
     // `contributions` is in plan order, so this is the highest-ranked model
@@ -628,6 +959,8 @@ export class ChatOrchestrator {
     await this.persist(assistantId, conversationId, {
       content: best.text,
       status: 'complete',
+      mode,
+      routingDecision,
       attempts,
       plan,
       stances: {},
@@ -644,9 +977,11 @@ export class ChatOrchestrator {
     };
   }
 
-
-  private resolvePlan(request: OrchestratorRequest): ModelDefinition[] {
-    const { registry } = this.deps;
+  private resolvePlan(request: OrchestratorRequest): {
+    plan: ModelDefinition[];
+    routingDecision: RoutingDecision;
+  } {
+    const { config, registry } = this.deps;
 
     if (request.selection.mode === 'manual') {
       const model = registry.find(request.selection.modelId);
@@ -657,14 +992,69 @@ export class ChatOrchestrator {
       if (availability !== 'AVAILABLE' && availability !== 'UNKNOWN') {
         throw Errors.modelUnavailable(model.displayName, { availability });
       }
+      const { category, label } = classifyTask(request.message);
       // A manual choice is authoritative. No substitution, ever — a silent
       // swap would make the provenance rail report a model that never ran.
-      return [model];
+      return {
+        plan: [model],
+        routingDecision: {
+          taskCategory: category,
+          taskLabel: label,
+          selectedModelIds: [model.id],
+          reason: `Manually selected ${model.displayName} — suitable for this ${label}.`,
+          overridden: true,
+        },
+      };
     }
 
-    const plan = registry.select(request.selection.routing);
+    if (request.selection.mode === 'compare') {
+      const uniqueIds = [...new Set(request.selection.modelIds)].slice(
+        0,
+        config.MAX_MODELS_PER_REQUEST,
+      );
+      if (uniqueIds.length < 2) {
+        throw Errors.validation([
+          {
+            path: 'selection.modelIds',
+            message: 'Select at least two distinct models to compare',
+          },
+        ]);
+      }
+
+      const plan: ModelDefinition[] = [];
+      for (const id of uniqueIds) {
+        const model = registry.find(id);
+        if (!model) throw Errors.modelNotFound({ modelId: id });
+        plan.push(model);
+      }
+
+      // At least one requested model must be routable to run an Arena turn;
+      // individual unavailable models fail gracefully in-panel during fan-out.
+      const anyRoutable = plan.some(
+        (m) => registry.isConfigured(m) && isRoutable(registry.availabilityOf(m)),
+      );
+      if (!anyRoutable) throw Errors.noModelAvailable();
+
+      const { category, label } = classifyTask(request.message);
+      const names = plan.map((m) => m.displayName).join(', ');
+      return {
+        plan,
+        routingDecision: {
+          taskCategory: category,
+          taskLabel: label,
+          selectedModelIds: plan.map((m) => m.id),
+          reason: `Comparing ${names} side by side for this ${label}.`,
+          overridden: true,
+        },
+      };
+    }
+
+    const { models: plan, decision } = registry.routeTask(
+      request.message,
+      request.selection.routing,
+    );
     if (plan.length === 0) throw Errors.noModelAvailable();
-    return plan;
+    return { plan, routingDecision: decision };
   }
 
   /** Ownership is settled before any write. Returns the id, or throws 404. */
@@ -686,9 +1076,31 @@ export class ChatOrchestrator {
     let budget = config.MAX_HISTORY_CHARS;
 
     for (const row of rows.toReversed()) {
-      if (row.content.length > budget) break;
-      budget -= row.content.length;
-      selected.unshift({ role: row.role, content: row.content });
+      let effectiveContent = row.content;
+      if (row.role === 'assistant') {
+        // When a user selects a specific answer in Model Arena, follow-up turns
+        // use that selected answer exclusively so unrelated model outputs are
+        // never mixed into the conversation context.
+        if (row.selectedModelId) {
+          const chosen = row.responses.find(
+            (r) =>
+              r.model.modelId === row.selectedModelId &&
+              r.outcome === 'complete' &&
+              Boolean(r.text.trim()),
+          );
+          if (chosen) effectiveContent = chosen.text;
+        }
+        if (!effectiveContent.trim()) {
+          const firstComplete = row.responses.find(
+            (r) => r.outcome === 'complete' && Boolean(r.text.trim()),
+          );
+          if (firstComplete) effectiveContent = firstComplete.text;
+        }
+      }
+
+      if (!effectiveContent || effectiveContent.length > budget) break;
+      budget -= effectiveContent.length;
+      selected.unshift({ role: row.role, content: effectiveContent });
     }
     return selected;
   }
@@ -708,12 +1120,21 @@ export class ChatOrchestrator {
       text: '',
       outcome: 'failed',
       latencyMs: 0,
+      firstTokenMs: null,
       inputTokens: null,
       outputTokens: null,
+      estimatedCostUsd: null,
       errorCode: null,
     };
 
-    if (!adapter) return { ...base, errorCode: 'MODEL_NOT_CONFIGURED' };
+    if (!adapter || !registry.isConfigured(model)) {
+      return { ...base, errorCode: 'MODEL_NOT_CONFIGURED' };
+    }
+
+    const availability = registry.availabilityOf(model);
+    if (!isRoutable(availability)) {
+      return { ...base, errorCode: 'MODEL_UNAVAILABLE' };
+    }
 
     // Per-call timeout, plus the caller's cancellation. Either aborts the
     // underlying provider request; neither leaves it running.
@@ -731,14 +1152,22 @@ export class ChatOrchestrator {
       );
 
       registry.health.recordSuccess(model.provider);
+      const latencyMs = Date.now() - startedAt;
+      const { estimatedCostUsd } = estimateModelCost(
+        model.id,
+        result.inputTokens,
+        result.outputTokens,
+      );
 
       return {
         ...base,
         text: result.text,
         outcome: result.text.trim() ? 'complete' : 'empty',
-        latencyMs: Date.now() - startedAt,
+        latencyMs,
+        firstTokenMs: null,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
+        estimatedCostUsd,
       };
     } catch (error) {
       const raw = isAppError(error) ? error : Errors.providerError({ cause: String(error) });
@@ -804,10 +1233,14 @@ export class ChatOrchestrator {
     plan: readonly ModelDefinition[],
     startedAt: number,
     partial = '',
+    mode: 'auto' | 'manual' | 'compare' = 'auto',
+    routingDecision: RoutingDecision | null = null,
   ): AsyncGenerator<ChatEvent> {
     await this.persist(assistantId, conversationId, {
       content: partial,
       status: 'cancelled',
+      mode,
+      routingDecision,
       attempts,
       plan,
       stances: {},
@@ -831,6 +1264,8 @@ export class ChatOrchestrator {
     input: {
       content: string;
       status: MessageStatus;
+      mode?: 'auto' | 'manual' | 'compare';
+      routingDecision?: RoutingDecision | null;
       attempts: ReadonlyMap<string, ModelAttempt>;
       plan: readonly ModelDefinition[];
       stances: Record<string, Stance>;
@@ -852,15 +1287,27 @@ export class ChatOrchestrator {
         outcome: attempt?.outcome ?? 'failed',
         stance: responded ? (input.stances[model.id] ?? 'unknown') : 'unknown',
         latencyMs: attempt?.latencyMs ?? 0,
+        firstTokenMs: attempt?.firstTokenMs ?? null,
         inputTokens: attempt?.inputTokens ?? null,
         outputTokens: attempt?.outputTokens ?? null,
+        estimatedCostUsd: attempt?.estimatedCostUsd ?? null,
         errorCode: attempt?.errorCode ?? null,
       };
     });
 
+    const knownCosts = responses
+      .map((r) => r.estimatedCostUsd ?? null)
+      .filter((c): c is number => c !== null);
+    const estimatedCostUsd =
+      knownCosts.length > 0
+        ? Number(knownCosts.reduce((a, b) => a + b, 0).toFixed(8))
+        : null;
+
     await messages.finalise(assistantId, {
       content: input.content,
       status: input.status,
+      ...(input.mode ? { mode: input.mode } : {}),
+      routingDecision: input.routingDecision ?? null,
       synthesisModel: input.synthesisModel ? registry.ref(input.synthesisModel) : null,
       responses,
       agreement: computeAgreement(this.summarise(input.plan, input.attempts, input.stances)),
@@ -876,6 +1323,7 @@ export class ChatOrchestrator {
         // avoid. `null` throughout when no provider reported anything.
         inputTokens: sum(responses.map((r) => r.inputTokens)),
         outputTokens: sum(responses.map((r) => r.outputTokens)),
+        estimatedCostUsd,
       },
     });
 

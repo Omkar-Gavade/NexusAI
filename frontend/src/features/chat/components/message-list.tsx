@@ -15,12 +15,24 @@ export function MessageList({
   isError,
   onRetry,
   onRegenerate,
+  onRetryModel,
+  onSelectAnswer,
+  onCombineAnswers,
+  onFollowUpAnswer,
+  combiningMessageId = null,
+  retryingTarget = null,
 }: {
   messages: Message[] | undefined;
   isPending: boolean;
   isError: boolean;
   onRetry: () => void;
   onRegenerate: (message: Message) => void;
+  onRetryModel?: ((message: Message, modelId: string) => void) | undefined;
+  onSelectAnswer?: ((message: Message, modelId: string | null) => void) | undefined;
+  onCombineAnswers?: ((message: Message) => void) | undefined;
+  onFollowUpAnswer?: ((message: Message, modelId: string, displayName: string) => void) | undefined;
+  combiningMessageId?: string | null;
+  retryingTarget?: { messageId: string; modelId: string } | null;
 }) {
   if (isPending) {
     return (
@@ -59,7 +71,19 @@ export function MessageList({
   return (
     <div className="flex flex-col gap-8">
       {messages.map((message) => (
-        <Turn key={message.id} message={message} onRegenerate={onRegenerate} />
+        <Turn
+          key={message.id}
+          message={message}
+          onRegenerate={onRegenerate}
+          onRetryModel={onRetryModel}
+          onSelectAnswer={onSelectAnswer}
+          onCombineAnswers={onCombineAnswers}
+          onFollowUpAnswer={onFollowUpAnswer}
+          combining={combiningMessageId === message.id}
+          retryingModelId={
+            retryingTarget?.messageId === message.id ? retryingTarget.modelId : null
+          }
+        />
       ))}
     </div>
   );

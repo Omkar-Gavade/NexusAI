@@ -4,6 +4,7 @@ import type {
   MessageStatus,
   ModelOutcome,
   ModelRef,
+  RoutingDecision,
   Source,
   Stance,
   UserPreferences,
@@ -47,8 +48,10 @@ export interface ModelResponseDoc {
   outcome: ModelOutcome;
   stance: Stance;
   latencyMs: number;
+  firstTokenMs?: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  estimatedCostUsd?: number | null;
   errorCode: string | null;
 }
 
@@ -60,6 +63,9 @@ export interface MessageDoc {
   role: 'user' | 'assistant';
   content: string;
   status: MessageStatus;
+  mode?: 'auto' | 'manual' | 'compare';
+  selectedModelId?: string | null;
+  routingDecision?: RoutingDecision | null;
   /** Present only on user messages; enforces send idempotency. */
   clientMessageId: string | null;
   synthesisModel: ModelRef | null;
@@ -71,6 +77,7 @@ export interface MessageDoc {
     firstTokenMs: number | null;
     inputTokens: number | null;
     outputTokens: number | null;
+    estimatedCostUsd?: number | null;
   } | null;
   createdAt: Date;
 }

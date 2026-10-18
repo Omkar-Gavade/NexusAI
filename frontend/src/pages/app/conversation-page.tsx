@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router';
-import type { ChatSelection, Message } from '@nexusai/contracts';
+import {
+  isRoutable,
+  type ChatSelection,
+  type Message,
+  type MessageListResponse,
+} from '@nexusai/contracts';
 import { Header } from '@/components/layout/header';
 import { fromStream } from '@/features/chat/answer-view';
+import {
+  retryMessageModel,
+  selectMessageAnswer,
+  synthesizeMessageAnswers,
+} from '@/features/chat/api';
 import { AnswerBlock } from '@/features/chat/components/answer-block';
 import { Composer } from '@/features/chat/components/composer';
 import { EmptyConversation } from '@/features/chat/components/empty-conversation';
@@ -12,13 +22,14 @@ import { prefetchMarkdown } from '@/features/chat/components/markdown-lazy';
 import { MessageList } from '@/features/chat/components/message-list';
 import { UserMessage } from '@/features/chat/components/user-message';
 import { orderedSlots } from '@/features/chat/stream-reducer';
-import { routes } from '@/lib/routes';
+import { HOMEPAGE_DRAFT_STORAGE_KEY, routes } from '@/lib/routes';
 import { useChatStream } from '@/features/chat/use-chat-stream';
 import { useMessages, messagesKey } from '@/features/chat/use-messages';
 import { conversationsKey, useConversations } from '@/features/conversations/use-conversations';
 import { useModels } from '@/features/models/use-models';
 import { useScrollAnchor } from '@/features/chat/use-scroll-anchor';
 import { useSession } from '@/features/auth/use-session';
+import { toast } from '@/stores/toast-store';
 
 export function ConversationPage() {
   const { conversationId = null } = useParams();
@@ -36,6 +47,46 @@ export function ConversationPage() {
     mode: 'auto',
     routing: user?.preferences.routingMode ?? 'balanced',
   }));
+  const [initialDraft, setInitialDraft] = useState<string | undefined>(undefined);
+  const [pendingCompareHandoff, setPendingCompareHandoff] = useState(false);
+  const [combiningMessageId, setCombiningMessageId] = useState<string | null>(null);
+  const [retryingTarget, setRetryingTarget] = useState<{
+    messageId: string;
+    modelId: string;
+  } | null>(null);
+  const [followUpContext, setFollowUpContext] = useState<{
+    messageId: string;
+    modelName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(HOMEPAGE_DRAFT_STORAGE_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(HOMEPAGE_DRAFT_STORAGE_KEY);
+      const parsed = JSON.parse(raw) as { prompt?: string; mode?: 'standard' | 'compare' };
+      if (parsed.prompt?.trim()) {
+        setInitialDraft(parsed.prompt.trim());
+      }
+      if (parsed.mode === 'compare') {
+        setPendingCompareHandoff(true);
+      }
+    } catch {
+      // Ignore storage errors in restricted environments.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingCompareHandoff || !models?.models.length) return;
+    const routable = models.models.filter((m) => isRoutable(m.availability));
+    const chosen = (routable.length >= 2 ? routable : models.models)
+      .slice(0, 3)
+      .map((m) => m.id);
+    if (chosen.length >= 2) {
+      setSelection({ mode: 'compare', modelIds: chosen });
+    }
+    setPendingCompareHandoff(false);
+  }, [pendingCompareHandoff, models]);
 
   const onConversationCreated = useCallback(
     (id: string) => {
@@ -76,7 +127,10 @@ export function ConversationPage() {
     (conversationId ? 'Conversation' : 'New conversation');
 
   const onSend = useCallback(
-    (prompt: string) => void send({ conversationId, prompt, selection }),
+    (prompt: string) => {
+      setFollowUpContext(null);
+      void send({ conversationId, prompt, selection });
+    },
     [send, conversationId, selection],
   );
 
@@ -90,32 +144,86 @@ export function ConversationPage() {
     [history, onSend],
   );
 
+  const updateCachedMessage = useCallback(
+    (updated: Message) => {
+      const targetConvId = conversationId ?? state.conversationId;
+      if (!targetConvId) return;
+      client.setQueryData<MessageListResponse>(messagesKey(targetConvId), (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          messages: prev.messages.map((m) => (m.id === updated.id ? updated : m)),
+        };
+      });
+    },
+    [client, conversationId, state.conversationId],
+  );
+
+  const onSelectAnswer = useCallback(
+    async (assistant: Message, selectedModelId: string | null) => {
+      const targetConvId = conversationId ?? state.conversationId;
+      if (!targetConvId) return;
+      try {
+        const updated = await selectMessageAnswer(targetConvId, assistant.id, selectedModelId);
+        updateCachedMessage(updated);
+      } catch {
+        toast.error("Couldn't save your answer selection.");
+      }
+    },
+    [conversationId, state.conversationId, updateCachedMessage],
+  );
+
+  const onCombineAnswers = useCallback(
+    async (assistant: Message) => {
+      const targetConvId = conversationId ?? state.conversationId;
+      if (!targetConvId) return;
+      setCombiningMessageId(assistant.id);
+      try {
+        const updated = await synthesizeMessageAnswers(targetConvId, assistant.id);
+        updateCachedMessage(updated);
+      } catch {
+        toast.error("Couldn't combine the model answers right now.");
+      } finally {
+        setCombiningMessageId(null);
+      }
+    },
+    [conversationId, state.conversationId, updateCachedMessage],
+  );
+
+  const onRetryModel = useCallback(
+    async (assistant: Message, modelId: string) => {
+      const targetConvId = conversationId ?? state.conversationId;
+      if (!targetConvId) {
+        onRegenerate(assistant);
+        return;
+      }
+      setRetryingTarget({ messageId: assistant.id, modelId });
+      try {
+        const updated = await retryMessageModel(targetConvId, assistant.id, modelId);
+        updateCachedMessage(updated);
+      } catch {
+        toast.error("Couldn't retry that model right now.");
+      } finally {
+        setRetryingTarget(null);
+      }
+    },
+    [conversationId, state.conversationId, onRegenerate, updateCachedMessage],
+  );
+
+  const onFollowUpAnswer = useCallback(
+    (assistant: Message, modelId: string, displayName: string) => {
+      void onSelectAnswer(assistant, modelId);
+      setFollowUpContext({ messageId: assistant.id, modelName: displayName });
+      document.getElementById('composer')?.focus();
+    },
+    [onSelectAnswer],
+  );
+
   // `useMessages` is disabled on /app, and a disabled query stays `pending`
   // forever — so this has to key off whether a conversation exists at all,
   // not off the query status.
   const loadingHistory = conversationId !== null && messages.isPending;
 
-  /**
-   * Who owns the turn that was just streamed: the stream, or history.
-   *
-   * The page renders persisted history *and* the in-flight optimistic turn.
-   * Nothing handed ownership from one to the other, and the optimistic turn was
-   * only cleared when `conversationId` changed — which happens on the first
-   * message of a new conversation (null → id) and never again. So from the
-   * second message onward, the moment the refetch landed the same exchange was
-   * on screen twice.
-   *
-   * The server tells us the id it persisted, in the `complete` event. Once that
-   * id appears in history, history is authoritative and the optimistic copy
-   * stands down. Matching on the id rather than on "the stream finished" is
-   * what makes this exact: there is no window where both are shown and none
-   * where neither is.
-   *
-   * Deliberately derived during render rather than cleared in an effect. If a
-   * later refetch ever came back without the message, the optimistic turn
-   * reappears instead of the answer vanishing — the failure mode points at
-   * showing the reader too much, never too little.
-   */
   const settled =
     state.messageId !== null && (history?.some((m) => m.id === state.messageId) ?? false);
   const showPendingTurn = pending !== null && !settled;
@@ -139,6 +247,12 @@ export function ConversationPage() {
                   isError={messages.isError}
                   onRetry={() => void messages.refetch()}
                   onRegenerate={onRegenerate}
+                  onRetryModel={onRetryModel}
+                  onSelectAnswer={onSelectAnswer}
+                  onCombineAnswers={onCombineAnswers}
+                  onFollowUpAnswer={onFollowUpAnswer}
+                  combiningMessageId={combiningMessageId}
+                  retryingTarget={retryingTarget}
                 />
 
                 {/* The in-flight turn. Optimistic on the user side only — the
@@ -173,6 +287,15 @@ export function ConversationPage() {
         streaming={streaming}
         disabled={noModels}
         disabledReason={noModels ? 'No real models are currently available.' : undefined}
+        followUpContext={
+          followUpContext
+            ? {
+                modelName: followUpContext.modelName,
+                onClear: () => setFollowUpContext(null),
+              }
+            : null
+        }
+        initialValue={initialDraft}
       />
     </>
   );

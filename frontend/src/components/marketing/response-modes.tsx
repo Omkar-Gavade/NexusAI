@@ -110,17 +110,31 @@ function Mode({
 
 export function ResponseModes() {
   return (
-    <div className="grid gap-px border border-line bg-line md:grid-cols-2">
+    <div className="grid gap-px border border-line bg-line lg:grid-cols-3">
       <Mode
-        eyebrow="Direct"
-        title="Pick a model. It answers you."
-        body="The response is that model's, unedited. Nothing reconciles it and nothing rewrites it, because nothing else ran."
+        eyebrow="Direct · Smart Router"
+        title="Pick a model, or let Smart Routing choose."
+        body="Auto-selects the best fit for your task (coding, research, reasoning, or quick questions), or lets you pin a specific model. The response is that model's, unedited. Nothing reconciles it and nothing rewrites it, because nothing else ran."
       >
         <SelectorRow value="GPT-OSS 120B" />
         <ul className="mt-3">
           <ModelRow name="GPT-OSS 120B" outcome="responded" />
         </ul>
         <Result value="GPT-OSS 120B · ANSWERED DIRECTLY" />
+      </Mode>
+
+      <Mode
+        eyebrow="Compare · Model Arena"
+        title="Compare side by side. Choose or combine."
+        body="Send one prompt to two or more models concurrently. Inspect each response in its own panel, select the answer you prefer to carry into follow-up questions, or combine completed answers on demand."
+      >
+        <SelectorRow value="Compare · 3 models" />
+        <ul className="mt-3">
+          <ModelRow name="Gemini 2.5 Flash" outcome="responded" />
+          <ModelRow name="GPT-OSS 120B" outcome="responded" />
+          <ModelRow name="GPT-4o" outcome="responded" />
+        </ul>
+        <Result value="MODEL ARENA · SELECT PREFERRED OR COMBINE" />
       </Mode>
 
       <Mode

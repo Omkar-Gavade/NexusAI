@@ -1,4 +1,8 @@
-import type { Conversation, Message } from '@nexusai/contracts';
+import {
+  estimateModelCost,
+  type Conversation,
+  type Message,
+} from '@nexusai/contracts';
 import { Errors } from '../domain/errors.ts';
 import type { ConversationRepository } from '../infrastructure/repositories/conversation-repository.ts';
 import type { MessageRepository } from '../infrastructure/repositories/message-repository.ts';
@@ -59,6 +63,33 @@ export class ConversationService {
 
     return { messages: page.messages.map(toWireMessage), nextCursor: page.nextCursor };
   }
+
+  async selectAnswer(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    selectedModelId: string | null,
+  ): Promise<Message> {
+    const doc = await this.deps.messages.findByIdOwned(userId, conversationId, messageId);
+    if (!doc || doc.role !== 'assistant') throw Errors.notFound();
+
+    if (selectedModelId !== null) {
+      const target = doc.responses.find(
+        (r) => r.model.modelId === selectedModelId && r.outcome === 'complete' && r.text.trim(),
+      );
+      if (!target) {
+        throw Errors.validation([
+          {
+            path: 'selectedModelId',
+            message: 'Selected model did not return a complete response on this turn',
+          },
+        ]);
+      }
+    }
+
+    await this.deps.messages.finalise(doc._id, { selectedModelId });
+    return toWireMessage({ ...doc, selectedModelId });
+  }
 }
 
 function clamp(limit: number): number {
@@ -76,26 +107,52 @@ function toWireConversation(doc: ConversationDoc): Conversation {
   };
 }
 
-function toWireMessage(doc: MessageDoc): Message {
-  return {
-    id: doc._id.toHexString(),
-    role: doc.role,
-    content: doc.content,
-    status: doc.status,
-    synthesisModel: doc.synthesisModel,
-    responses: doc.responses.map((r) => ({
+export function toWireMessage(doc: MessageDoc): Message {
+  const responses = doc.responses.map((r) => {
+    const estimatedCostUsd =
+      r.estimatedCostUsd !== undefined
+        ? r.estimatedCostUsd
+        : estimateModelCost(r.model.modelId, r.inputTokens, r.outputTokens).estimatedCostUsd;
+    return {
       model: r.model,
       text: r.text,
       outcome: r.outcome,
       stance: r.stance,
       latencyMs: r.latencyMs,
+      firstTokenMs: r.firstTokenMs ?? null,
       inputTokens: r.inputTokens,
       outputTokens: r.outputTokens,
+      estimatedCostUsd,
       errorCode: r.errorCode as Message['responses'][number]['errorCode'],
-    })),
+    };
+  });
+
+  const knownCosts = responses
+    .map((r) => r.estimatedCostUsd)
+    .filter((c): c is number => c !== null && c !== undefined);
+  const turnEstimatedCost =
+    knownCosts.length > 0
+      ? Number(knownCosts.reduce((a, b) => a + b, 0).toFixed(8))
+      : null;
+
+  return {
+    id: doc._id.toHexString(),
+    role: doc.role,
+    content: doc.content,
+    status: doc.status,
+    ...(doc.mode ? { mode: doc.mode } : {}),
+    selectedModelId: doc.selectedModelId ?? null,
+    routingDecision: doc.routingDecision ?? null,
+    synthesisModel: doc.synthesisModel,
+    responses,
     agreement: doc.agreement,
     sources: doc.sources,
-    metadata: doc.metadata,
+    metadata: doc.metadata
+      ? {
+          ...doc.metadata,
+          estimatedCostUsd: doc.metadata.estimatedCostUsd ?? turnEstimatedCost,
+        }
+      : null,
     createdAt: doc.createdAt.toISOString(),
   };
 }

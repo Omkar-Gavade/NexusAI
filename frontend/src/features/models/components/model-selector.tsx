@@ -65,7 +65,11 @@ export function ModelSelector({
   );
 
   const currentId =
-    selection.mode === 'auto' ? `routing:${selection.routing}` : `model:${selection.modelId}`;
+    selection.mode === 'auto'
+      ? `routing:${selection.routing}`
+      : selection.mode === 'manual'
+        ? `model:${selection.modelId}`
+        : 'compare';
 
   useEffect(() => {
     if (!open) return;
@@ -76,7 +80,9 @@ export function ModelSelector({
   const label =
     selection.mode === 'manual'
       ? (data?.models.find((m) => m.id === selection.modelId)?.displayName ?? selection.modelId)
-      : (ROUTING.find((r) => r.mode === selection.routing)?.label ?? 'Auto');
+      : selection.mode === 'compare'
+        ? `Arena · ${selection.modelIds.length} models`
+        : (ROUTING.find((r) => r.mode === selection.routing)?.label ?? 'Auto');
 
   const commit = (option: Option) => {
     if (option.kind === 'routing') onChange({ mode: 'auto', routing: option.mode });
