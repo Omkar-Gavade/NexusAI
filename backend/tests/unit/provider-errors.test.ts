@@ -111,6 +111,26 @@ describe('classifyProviderError', () => {
     expect(error.context['authCause']).toBe('account');
   });
 
+  // Anthropic reports an exhausted account balance with HTTP 400
+  // `invalid_request_error` ("Your credit balance is too low to access the
+  // Anthropic API..."). Without checking `ACCOUNT_UNUSABLE` on 400, this was
+  // classified as INVALID_REQUEST, leaving `claude-sonnet` in rotation on every
+  // turn instead of marking the provider CONFIGURED_BUT_UNAVAILABLE.
+  it('classifies Anthropic 400 low credit balance as an account auth failure', () => {
+    const body = JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message:
+          'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.',
+      },
+    });
+    const error = classifyProviderError(400, body, ctx);
+    expect(error.code).toBe('AUTH_ERROR');
+    expect(error.retryable).toBe(false);
+    expect(error.context['authCause']).toBe('account');
+  });
+
   // The narrow matcher must not turn an ordinary bad request into an auth
   // failure just because the user's prompt mentioned the words.
   it('does not misread a prompt that merely mentions API keys', () => {

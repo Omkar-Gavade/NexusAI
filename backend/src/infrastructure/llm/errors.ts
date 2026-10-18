@@ -19,7 +19,7 @@ const INVALID_KEY = /api[_ ]key[_ ]invalid|api key not valid|invalid[_ ]api[_ ]k
  * the provider out of rotation.
  */
 const ACCOUNT_UNUSABLE =
-  /insufficient[_ ](balance|quota|credit|funds)|payment required|exceeded your current quota|account (is )?(suspended|deactivated)/;
+  /insufficient[_ ](balance|quota|credit|funds)|credit balance is too low|payment required|exceeded your current quota|account (is )?(suspended|deactivated)/;
 
 /**
  * A 403 the operator cannot fix by presenting a different credential: the key
@@ -61,6 +61,12 @@ export function classifyProviderError(
     // would keep advertising the model as selectable and keep calling the
     // provider on every turn, with nothing ever reporting the real cause.
     if (INVALID_KEY.test(lower)) return Errors.providerAuthError(ctx);
+
+    // Anthropic reports an exhausted account balance as 400 invalid_request_error
+    // ("Your credit balance is too low to access the Anthropic API...").
+    if (ACCOUNT_UNUSABLE.test(lower)) {
+      return Errors.providerAuthError({ ...ctx, authCause: 'account' });
+    }
 
     // Context overflow is reported as a plain 400 by most providers; the body
     // is the only way to tell it apart from a malformed request.
