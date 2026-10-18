@@ -75,22 +75,25 @@ export function classifyProviderError(
     return PLAN_RESTRICTED.test(lower) ? Errors.modelNotFound(ctx) : Errors.providerAuthError(ctx);
   }
 
-  // Tagged so health can say what actually happened. The consequence matches a
-  // rejected key — operator action, same cooldown — but the fact does not, and
-  // "credentials were rejected" is false for a valid key on an empty account.
-  // Must be checked before 429 because OpenAI uses 429 for both quota exhaustion
-  // and temporary rate limits, and treating quota exhaustion as a temporary
-  // rate limit traps the provider in a loop.
+  // 402, and the equivalent said in words at another status. Observed live:
+  // DeepSeek answers "Insufficient Balance" with 402, and OpenAI answers
+  // `insufficient_quota` with 429. Both fell through to retryable errors — so
+  // the orchestrator would have retried a failure that can never succeed, on
+  // every turn, while the model stayed advertised as available. Classified as
+  // an auth failure (tagged `authCause: 'account'`) because the consequence is
+  // identical: an operator must act, and until they do the provider is
+  // unusable. The 15-minute re-check means topping the account up recovers it
+  // without a restart.
+  //
+  // Checked before 429 because `ACCOUNT_UNUSABLE` matches only specific
+  // exhausted-account phrases (`insufficient_quota`, `exceeded your current
+  // quota`, `insufficient_balance`); a throttle that merely mentions "account"
+  // falls through to `RATE_LIMITED`.
   if (status === 402 || ACCOUNT_UNUSABLE.test(lower)) {
     return Errors.providerAuthError({ ...ctx, authCause: 'account' });
   }
 
-  // A genuine upstream rate limit. The provider is temporarily overwhelmed.
-  // Returning rateLimited here incorrectly tells the end user *they* sent too
-  // many requests, when the server is the one being throttled. Treating it as
-  // providerUnavailable keeps it retryable (circuit breaker will open and close)
-  // but correctly informs the user that the provider is the bottleneck.
-  if (status === 429) return Errors.providerUnavailable(ctx);
+  if (status === 429) return Errors.rateLimited(30);
 
   // Request larger than the provider will accept — including a per-minute token
   // ceiling, which providers report against the request rather than the window.

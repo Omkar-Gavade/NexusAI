@@ -88,6 +88,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           max_tokens: request.maxOutputTokens,
           ...(system ? { system } : {}),
           messages: turns,
+          ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
           stream,
         }),
       });

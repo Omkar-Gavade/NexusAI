@@ -64,7 +64,7 @@ describe('classifyProviderError', () => {
   // would either retry forever or disable a provider that was only throttled.
   it('keeps a rate limit distinct from an unpayable account', () => {
     const throttled = classifyProviderError(429, '{}', ctx);
-    expect(throttled.code).toBe('PROVIDER_UNAVAILABLE');
+    expect(throttled.code).toBe('RATE_LIMITED');
     expect(throttled.retryable).toBe(true);
   });
 
@@ -90,7 +90,25 @@ describe('classifyProviderError', () => {
 
   it('still reads a throttle as a throttle when the body mentions an account', () => {
     const body = JSON.stringify({ error: { message: 'Rate limit reached for your account' } });
-    expect(classifyProviderError(429, body, ctx).code).toBe('PROVIDER_UNAVAILABLE');
+    expect(classifyProviderError(429, body, ctx).code).toBe('RATE_LIMITED');
+  });
+
+  // OpenAI reports exhausted billing quota with HTTP 429 `insufficient_quota`
+  // ("You exceeded your current quota, please check your plan and billing
+  // details"). Unlike a temporary throttle, that never clears on its own and
+  // must disable the provider rather than stay retryable.
+  it('classifies OpenAI 429 insufficient_quota as an account auth failure, not a temporary rate limit', () => {
+    const body = JSON.stringify({
+      error: {
+        message: 'You exceeded your current quota, please check your plan and billing details.',
+        type: 'insufficient_quota',
+        code: 'insufficient_quota',
+      },
+    });
+    const error = classifyProviderError(429, body, ctx);
+    expect(error.code).toBe('AUTH_ERROR');
+    expect(error.retryable).toBe(false);
+    expect(error.context['authCause']).toBe('account');
   });
 
   // The narrow matcher must not turn an ordinary bad request into an auth

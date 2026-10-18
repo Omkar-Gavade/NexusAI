@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
+import { errorMessages, type Message } from '@nexusai/contracts';
 import { render, screen, waitFor } from '@/test/render';
 import { slot } from '@/test/fixtures';
-import type { AnswerView } from '../answer-view';
+import { fromMessage, type AnswerView } from '../answer-view';
 import { AnswerBlock } from './answer-block';
 
 function view(overrides: Partial<AnswerView> = {}): AnswerView {
@@ -136,5 +137,111 @@ describe('AnswerBlock', () => {
   it('shows no sources affordance when the backend returned none', () => {
     setup({ sources: [] });
     expect(screen.queryByRole('button', { name: /sources for this answer/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('fromMessage — persisted failure reconstruction', () => {
+  const baseMessage: Message = {
+    id: 'm1',
+    role: 'assistant',
+    content: '',
+    status: 'failed',
+    synthesisModel: null,
+    responses: [],
+    agreement: null,
+    sources: [],
+    metadata: null,
+    createdAt: new Date().toISOString(),
+  };
+
+  it('uses the model’s own error code when a single planned model failed', () => {
+    const derived = fromMessage({
+      ...baseMessage,
+      responses: [
+        {
+          model: { modelId: 'claude-sonnet', provider: 'anthropic', displayName: 'Claude Sonnet 4.5' },
+          text: '',
+          outcome: 'failed',
+          stance: 'unknown',
+          latencyMs: 120,
+          inputTokens: null,
+          outputTokens: null,
+          errorCode: 'TIMEOUT',
+        },
+      ],
+    });
+    expect(derived.error).toEqual({
+      code: 'TIMEOUT',
+      message: errorMessages.TIMEOUT,
+      partial: false,
+    });
+  });
+
+  it('reports SYNTHESIS_FAILED when at least one model completed but the turn failed', () => {
+    const derived = fromMessage({
+      ...baseMessage,
+      status: 'failed_partial',
+      content: 'partial synthesis',
+      responses: [
+        {
+          model: { modelId: 'gemini-flash', provider: 'google', displayName: 'Gemini 2.5 Flash' },
+          text: 'full model text',
+          outcome: 'complete',
+          stance: 'unknown',
+          latencyMs: 200,
+          inputTokens: 10,
+          outputTokens: 20,
+          errorCode: null,
+        },
+        {
+          model: { modelId: 'llama-groq', provider: 'groq', displayName: 'GPT-OSS 120B' },
+          text: 'other text',
+          outcome: 'complete',
+          stance: 'unknown',
+          latencyMs: 180,
+          inputTokens: 10,
+          outputTokens: 18,
+          errorCode: null,
+        },
+      ],
+    });
+    expect(derived.error).toEqual({
+      code: 'SYNTHESIS_FAILED',
+      message: errorMessages.SYNTHESIS_FAILED,
+      partial: true,
+    });
+  });
+
+  it('reports PROVIDER_UNAVAILABLE when multiple models all failed', () => {
+    const derived = fromMessage({
+      ...baseMessage,
+      responses: [
+        {
+          model: { modelId: 'gemini-flash', provider: 'google', displayName: 'Gemini 2.5 Flash' },
+          text: '',
+          outcome: 'failed',
+          stance: 'unknown',
+          latencyMs: 50,
+          inputTokens: null,
+          outputTokens: null,
+          errorCode: 'RATE_LIMITED',
+        },
+        {
+          model: { modelId: 'llama-groq', provider: 'groq', displayName: 'GPT-OSS 120B' },
+          text: '',
+          outcome: 'failed',
+          stance: 'unknown',
+          latencyMs: 60,
+          inputTokens: null,
+          outputTokens: null,
+          errorCode: 'PROVIDER_UNAVAILABLE',
+        },
+      ],
+    });
+    expect(derived.error).toEqual({
+      code: 'PROVIDER_UNAVAILABLE',
+      message: errorMessages.PROVIDER_UNAVAILABLE,
+      partial: false,
+    });
   });
 });

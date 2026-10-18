@@ -93,18 +93,23 @@ describe.skipIf(!LIVE)('live provider verification', () => {
             {
               model,
               messages: [{ role: 'user', content: 'What is 2 + 2? Answer briefly.' }],
-              maxOutputTokens: 64,
+              // 512 rather than 64: Gemini 2.5 Flash and GPT-OSS 120B count
+              // internal reasoning tokens against `maxOutputTokens`, so 64 can
+              // be consumed entirely by thinking before visible text starts.
+              maxOutputTokens: 512,
             },
             AbortSignal.timeout(60_000),
           )
           .catch((error: unknown) => {
-            // A key that is valid but whose account cannot pay is not an
-            // adapter defect, and failing identically to a broken adapter
-            // hides which one you are looking at. Reported and skipped.
-            if ((error as { code?: string })?.code === 'AUTH_ERROR') {
+            // A key that is valid but whose account cannot pay or has a 0-RPM
+            // free-tier throttle is not an adapter defect, and failing
+            // identically to a broken adapter hides which one you are looking
+            // at. Reported and skipped.
+            const code = (error as { code?: string })?.code;
+            if (code === 'AUTH_ERROR' || code === 'RATE_LIMITED') {
               // eslint-disable-next-line no-console
               console.log(
-                `  ${model.provider.padEnd(10)} ${model.id.padEnd(16)} → SKIPPED: credential present but rejected (account state, not adapter)`,
+                `  ${model.provider.padEnd(10)} ${model.id.padEnd(16)} → SKIPPED (${code}: account/tier state, not adapter)`,
               );
               ctx.skip();
             }

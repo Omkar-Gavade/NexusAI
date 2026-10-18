@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../src/config/env.ts';
+import { CATALOG } from '../../src/domain/models/catalog.ts';
 import { ModelRegistry } from '../../src/domain/models/registry.ts';
 import { ProviderHealthTracker } from '../../src/domain/models/health.ts';
 import { classifyProviderError } from '../../src/infrastructure/llm/errors.ts';
@@ -264,5 +265,48 @@ describe('a model-level restriction does not disable its provider', () => {
 
     const mistralModels = r.routable().filter((m) => m.provider === 'mistral');
     expect(mistralModels.length).toBeGreaterThan(0);
+  });
+});
+
+describe('catalog providerModelId safety', () => {
+  // Upstream model ids that have been retired, shut down, or observed to be
+  // restricted on free-tier accounts. Reintroducing any of them turns real
+  // provider calls into 404 MODEL_NOT_FOUND, 400 INVALID_REQUEST, or 403
+  // tier_not_allowed in production.
+  const RETIRED_OR_RESTRICTED_PROVIDER_MODEL_IDS = new Set([
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-001',
+    'gemini-1.5-flash-002',
+    'gemini-1.5-pro',
+    'gemini-2.0-flash',
+    'claude-3-5-sonnet-latest',
+    'claude-3-5-sonnet-20241022',
+    'claude-3-5-sonnet-20240620',
+    'llama-3.3-70b-versatile',
+    'deepseek-chat',
+    'mistral-large-latest',
+  ]);
+
+  it('never configures a retired or tier-restricted upstream providerModelId', () => {
+    for (const model of CATALOG.filter((m) => !m.testOnly)) {
+      expect(
+        RETIRED_OR_RESTRICTED_PROVIDER_MODEL_IDS.has(model.providerModelId),
+        `${model.id} uses retired or restricted providerModelId "${model.providerModelId}"`,
+      ).toBe(false);
+    }
+  });
+
+  it('maps each public catalog id to its verified upstream providerModelId', () => {
+    const byId = Object.fromEntries(
+      CATALOG.filter((m) => !m.testOnly).map((m) => [m.id, m.providerModelId]),
+    );
+    expect(byId).toEqual({
+      'gpt-4o': 'gpt-4o',
+      'claude-sonnet': 'claude-sonnet-4-5',
+      'gemini-flash': 'gemini-2.5-flash',
+      'mistral-large': 'mistral-medium-latest',
+      'deepseek-chat': 'deepseek-v4-flash',
+      'llama-groq': 'openai/gpt-oss-120b',
+    });
   });
 });
