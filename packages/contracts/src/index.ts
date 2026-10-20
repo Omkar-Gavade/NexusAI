@@ -51,6 +51,8 @@ export {
 } from './message.ts';
 
 export {
+  ARENA_MAX_MODELS,
+  ARENA_MIN_MODELS,
   ChatEvent,
   ChatRequest,
   ChatSelection,

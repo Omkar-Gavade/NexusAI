@@ -330,6 +330,6 @@ describe('AnswerBlock — Smart Router, Model Arena & Performance/Cost', () => {
     const panel = screen.getByTestId('performance-cost-panel');
     expect(panel).toHaveTextContent(/Not available/);
     expect(panel).toHaveTextContent(/Unknown/);
-    expect(panel).toHaveTextContent(/Google AI Developer Standard Pricing/);
+    expect(panel).toHaveTextContent(/Google Gemini API pricing/);
   });
 });

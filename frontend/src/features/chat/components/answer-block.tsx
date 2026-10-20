@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronRight, Columns2, Copy, Layers, RotateCcw, Sparkles } from 'lucide-react';
+import { Check, ChevronRight, Columns2, Copy, Layers, RotateCcw, Sparkles, UserRound } from 'lucide-react';
 import { getModelPricing } from '@nexusai/contracts';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import type { AnswerView } from '../answer-view';
 import { useStreamedText } from '../use-streamed-text';
 import type { ModelSlot } from '../stream-reducer';
 import { LazyMarkdown as Markdown } from './markdown-lazy';
-import { ModelResponse } from './model-response';
+import { ModelResponse, shortfall } from './model-response';
 import { ProvenanceRail } from './provenance-rail';
 import { SourceList } from './source-list';
 
@@ -62,6 +62,7 @@ export function AnswerBlock({
   const completedSlots = slots.filter(
     (s) => s.phase === 'complete' && s.text.trim().length > 0,
   );
+  const settledSlots = slots.filter((s) => s.phase === 'complete' || s.phase === 'failed');
   const selectedSlot = view.selectedModelId
     ? slots.find((s) => s.model.modelId === view.selectedModelId)
     : undefined;
@@ -121,36 +122,33 @@ export function AnswerBlock({
       aria-busy={streaming || undefined}
     >
       {view.routingDecision && (
-        <div
-          data-testid="turn-routing-reason"
-          className={clsx(
-            'flex flex-wrap items-center gap-2 text-meta text-ink-3',
-            !isCompare && 'lg:pl-[calc(var(--rail-width)+var(--rail-gutter))]',
-          )}
-        >
-          {isCompare ? (
-            <Columns2 size={12} aria-hidden="true" className="shrink-0 text-accent" />
-          ) : (
-            <Sparkles size={12} aria-hidden="true" className="shrink-0 text-accent" />
-          )}
-          <span>{view.routingDecision.reason}</span>
-        </div>
+        <RoutingLine
+          decision={view.routingDecision}
+          mode={view.mode ?? 'auto'}
+          indent={!isCompare}
+        />
       )}
 
       {isCompare ? (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-subtle pb-2">
-            <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
               <span data-register="machine" className="text-note uppercase text-ink-2">
-                MODEL ARENA · {completedSlots.length} OF {slots.length} RESPONDED
+                Model Arena
+              </span>
+              <span data-register="machine" className="text-meta text-ink-3" aria-live="polite">
+                {streaming
+                  ? `${settledSlots.length} of ${slots.length} finished`
+                  : `${completedSlots.length} of ${slots.length} responded`}
               </span>
               {selectedSlot && (
                 <span
                   data-testid="selected-answer-banner"
-                  className="inline-flex items-center gap-1 rounded-xs border border-accent/40 bg-selected px-2 py-0.5 text-meta text-ink"
+                  className="inline-flex items-center gap-1 text-meta text-ink-2"
                 >
-                  <Check size={11} aria-hidden="true" className="text-accent" />
-                  Preferred: {selectedSlot.model.displayName} (retained for follow-up turns)
+                  <Check size={12} aria-hidden="true" className="text-accent" />
+                  Follow-ups continue from{' '}
+                  <strong className="font-[550] text-ink">{selectedSlot.model.displayName}</strong>
                 </span>
               )}
             </div>
@@ -186,7 +184,15 @@ export function AnswerBlock({
           ) : (
             <div
               data-testid="arena-comparison-grid"
-              className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+              data-count={slots.length}
+              className={clsx(
+                // Columns follow the line-up rather than a fixed two: three
+                // models get three columns where there is room, four become a
+                // 2×2 so no column drops below a readable width. Below md they
+                // stack — narrow columns of prose are worse than scrolling.
+                'grid grid-cols-1 gap-3',
+                slots.length === 3 ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2',
+              )}
             >
               {slots.map((slot, index) => (
                 <ModelResponse
@@ -214,18 +220,15 @@ export function AnswerBlock({
           {view.text.trim().length > 0 && (
             <div
               data-testid="arena-combined-synthesis"
-              className="mt-2 border-t border-line pt-4"
+              className="mt-3 flex flex-col gap-3 motion-safe:animate-[nx-answer-in_180ms_var(--ease-out)]"
             >
-              <div className="mb-2 flex items-center gap-2">
-                <span data-register="machine" className="text-note uppercase text-accent">
-                  COMBINED SYNTHESIS
-                </span>
-                {view.synthesisModel && (
-                  <span data-register="machine" className="text-note text-ink-3">
-                    · RECONCILED BY {view.synthesisModel.displayName.toUpperCase()}
-                  </span>
-                )}
-              </div>
+              <Rule
+                label={
+                  view.synthesisModel
+                    ? `Combined · reconciled by ${view.synthesisModel.displayName}`
+                    : 'Combined answer'
+                }
+              />
               <div className="flex gap-(--rail-gutter) max-lg:flex-col max-lg:gap-3">
                 {slots.length > 0 && (
                   <div className="max-lg:order-2 lg:self-stretch">
@@ -385,43 +388,6 @@ export function AnswerBlock({
       )}
     </article>
   );
-}
-
-/**
- * What the system is doing, in one line, using the real plan.
- *
- * The count comes from the slots the server actually planned — never a fixed
- * number — and the stage is derived from the slots themselves rather than from
- * a new field: while any model is still outstanding this is the fan-out; once
- * they have all settled and no text has arrived, the synthesis pass is running.
- *
- * A model that failed is shown as settled, not as an error. An individual
- * provider failure is not the reader's problem to solve mid-turn — the turn
- * continues with whoever answered, and the shortfall is reported afterwards by
- * the agreement line and the rail. What must never happen is a provider's raw
- * error becoming the answer.
- */
-/**
- * Short, neutral words for why a model contributed nothing.
- *
- * The provider's own message never reaches this component — the server sends a
- * fixed string and an error code — and even the code is not shown raw. A
- * reader needs to know that a model dropped out and roughly why; `429`,
- * `RESOURCE_EXHAUSTED` and a provider stack trace are operator concerns, and
- * putting them in a chat transcript makes a handled condition look like a
- * crash.
- */
-function shortfall(slot: ModelSlot): string {
-  switch (slot.errorCode) {
-    case 'RATE_LIMITED':
-      return 'rate limited';
-    case 'TIMEOUT':
-      return 'timed out';
-    case 'MODEL_NOT_CONFIGURED':
-      return 'not configured';
-    default:
-      return 'unavailable';
-  }
 }
 
 /**
@@ -601,7 +567,8 @@ function Metadata({
   // product's name for it and "GPT-4O" is not.
   if (soleModel) parts.push(soleModel);
   else if (view.agreement) parts.push(agreementSentence(view.agreement));
-  else if (view.streaming && view.text.length === 0) parts.push('WORKING');
+  // The Arena header already counts models as they finish.
+  else if (view.streaming && view.text.length === 0 && view.mode !== 'compare') parts.push('WORKING');
 
   /*
    * "Still writing", in both modes.
@@ -668,115 +635,178 @@ function Metadata({
 }
 
 /**
- * Transparent Performance & Cost inspection panel.
+ * How the router decided, in one line, from the decision the server recorded.
  *
- * Uses measured latency and provider-reported token usage. Calculated costs are
- * labeled explicitly as estimates derived from verified USD list rates, and
- * missing metrics are reported honestly as "Not available" or "Unknown".
+ * The category is a chip because it is the classifier's output — a value, not
+ * prose — and the sentence beside it is the server's own explanation, read back
+ * verbatim. A manual pick and an Arena line-up are labelled as what they are,
+ * so a turn the user steered is never presented as the router's choice.
+ */
+function RoutingLine({
+  decision,
+  mode,
+  indent,
+}: {
+  decision: NonNullable<AnswerView['routingDecision']>;
+  mode: 'auto' | 'manual' | 'compare';
+  indent: boolean;
+}) {
+  const Icon = mode === 'compare' ? Columns2 : mode === 'manual' ? UserRound : Sparkles;
+  const label = mode === 'compare' ? 'Arena' : mode === 'manual' ? 'Manual' : 'Smart route';
+
+  return (
+    <div
+      data-testid="turn-routing-reason"
+      className={clsx(
+        'flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-3',
+        indent && 'lg:pl-[calc(var(--rail-width)+var(--rail-gutter))]',
+      )}
+    >
+      <span
+        data-register="machine"
+        className="inline-flex shrink-0 items-center gap-1 text-note uppercase text-ink-2"
+      >
+        <Icon size={11} aria-hidden="true" className="text-accent" />
+        {label}
+      </span>
+      <span
+        data-register="machine"
+        className="shrink-0 rounded-mark border border-line px-1.5 text-note uppercase leading-[18px] text-ink-3"
+      >
+        {decision.taskCategory}
+      </span>
+      <span className="min-w-0">{decision.reason}</span>
+    </div>
+  );
+}
+
+/**
+ * Performance & cost, measured or marked as missing.
+ *
+ * A real description list for the turn and a real table per model, so a
+ * screen reader can move by row and column instead of hearing a run of
+ * uppercase labels. Every figure is either measured (latency, time to first
+ * token), provider-reported (tokens), or computed from those and a dated list
+ * price (cost) — and anything absent says so in words rather than as a zero.
  */
 function PerformanceDetails({ view }: { view: AnswerView }) {
+  // Named by the catalog's display name: the provider's own model id is an
+  // internal identifier and stays off the page.
+  const sources = view.slots.flatMap((slot) => {
+    const pricing = getModelPricing(slot.model.modelId);
+    return pricing ? [{ name: slot.model.displayName, ...pricing }] : [];
+  });
+
   return (
     <div
       data-testid="performance-cost-panel"
-      className="flex flex-col gap-3 rounded-control border border-line bg-raised p-3"
+      className="flex flex-col gap-4 border border-line bg-raised p-3.5"
     >
-      <div className="grid grid-cols-2 gap-3 border-b border-line-subtle pb-3 sm:grid-cols-5">
-        <div>
-          <dt data-register="machine" className="text-note uppercase text-ink-3">
-            FIRST TOKEN
-          </dt>
-          <dd data-register="machine" className="mt-0.5 text-meta text-ink">
-            {nullableLatency(view.firstTokenMs)}
-          </dd>
-        </div>
-        <div>
-          <dt data-register="machine" className="text-note uppercase text-ink-3">
-            TOTAL LATENCY
-          </dt>
-          <dd data-register="machine" className="mt-0.5 text-meta text-ink">
-            {nullableLatency(view.latencyMs)}
-          </dd>
-        </div>
-        <div>
-          <dt data-register="machine" className="text-note uppercase text-ink-3">
-            INPUT TOKENS
-          </dt>
-          <dd data-register="machine" className="mt-0.5 text-meta text-ink">
-            {nullableTokens(view.inputTokens)}
-          </dd>
-        </div>
-        <div>
-          <dt data-register="machine" className="text-note uppercase text-ink-3">
-            OUTPUT TOKENS
-          </dt>
-          <dd data-register="machine" className="mt-0.5 text-meta text-ink">
-            {nullableTokens(view.outputTokens)}
-          </dd>
-        </div>
-        <div>
-          <dt data-register="machine" className="text-note uppercase text-ink-3">
-            ESTIMATED COST
-          </dt>
-          <dd data-register="machine" className="mt-0.5 text-meta text-ink">
-            {estimatedCost(view.estimatedCostUsd)}
-          </dd>
-        </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-5">
+        <Figure label="FIRST TOKEN" value={nullableLatency(view.firstTokenMs)} hint="Until the first text you saw" />
+        <Figure label="TOTAL LATENCY" value={nullableLatency(view.latencyMs)} hint="Whole turn" />
+        <Figure label="INPUT TOKENS" value={nullableTokens(view.inputTokens)} hint="Provider-reported" />
+        <Figure label="OUTPUT TOKENS" value={nullableTokens(view.outputTokens)} hint="Provider-reported" />
+        <Figure label="ESTIMATED COST" value={estimatedCost(view.estimatedCostUsd)} hint="From list prices, USD" />
+      </dl>
+
+      <div className="-mx-3.5 overflow-x-auto px-3.5">
+        <table className="w-full min-w-[560px] border-collapse text-left">
+          <caption className="sr-only">Per-model telemetry</caption>
+          <thead>
+            <tr data-register="machine" className="text-note uppercase text-ink-3">
+              <th scope="col" className="pb-1.5 pr-3 font-[500]">Model</th>
+              <th scope="col" className="pb-1.5 pr-3 font-[500]">Status</th>
+              <th scope="col" className="pb-1.5 pr-3 text-right font-[500]">First token</th>
+              <th scope="col" className="pb-1.5 pr-3 text-right font-[500]">Total</th>
+              <th scope="col" className="pb-1.5 pr-3 text-right font-[500]">Tokens in / out</th>
+              <th scope="col" className="pb-1.5 text-right font-[500]">Est. cost</th>
+            </tr>
+          </thead>
+          <tbody data-register="machine" className="text-meta text-ink-2">
+            {view.slots.map((slot) => {
+              const failed = slot.phase === 'failed';
+              const statusText = failed
+                ? `Failed (${shortfall(slot)})`
+                : slot.phase === 'queued' || slot.phase === 'running'
+                  ? 'Running'
+                  : slot.outcome === 'empty'
+                    ? 'Empty response'
+                    : 'Completed';
+              return (
+                <tr key={slot.model.modelId} className="border-t border-line-subtle">
+                  <th scope="row" className="py-1.5 pr-3 font-human text-ui font-[550] text-ink">
+                    {slot.model.displayName}{' '}
+                    <span data-register="machine" className="text-note font-normal uppercase text-ink-3">
+                      {slot.model.provider}
+                    </span>
+                  </th>
+                  <td className={clsx('py-1.5 pr-3', failed && 'text-warn')}>{statusText}</td>
+                  <td className="py-1.5 pr-3 text-right">{nullableLatency(slot.firstTokenMs)}</td>
+                  <td className="py-1.5 pr-3 text-right">{nullableLatency(slot.latencyMs)}</td>
+                  <td className="py-1.5 pr-3 text-right">
+                    {nullableTokens(slot.inputTokens)} / {nullableTokens(slot.outputTokens)}
+                  </td>
+                  <td className="py-1.5 text-right">{estimatedCost(slot.estimatedCostUsd)}</td>
+                </tr>
+              );
+            })}
+            {view.otherUsage && (
+              <tr className="border-t border-line-subtle">
+                <th scope="row" className="py-1.5 pr-3 font-human text-ui font-[550] text-ink">
+                  {view.synthesisModel ? `Synthesis · ${view.synthesisModel.displayName}` : 'Other calls'}
+                  <span className="block font-human text-micro font-normal text-ink-3">
+                    Synthesis pass and any retried calls
+                  </span>
+                </th>
+                <td className="py-1.5 pr-3">Included in totals</td>
+                <td className="py-1.5 pr-3 text-right">—</td>
+                <td className="py-1.5 pr-3 text-right">—</td>
+                <td className="py-1.5 pr-3 text-right">
+                  {nullableTokens(view.otherUsage.inputTokens)} / {nullableTokens(view.otherUsage.outputTokens)}
+                </td>
+                <td className="py-1.5 text-right">{estimatedCost(view.otherUsage.estimatedCostUsd)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <span data-register="machine" className="text-note uppercase text-ink-3">
-          PER-MODEL TELEMETRY & PRICING SOURCE
-        </span>
-        <div className="divide-y divide-line-subtle">
-          {view.slots.map((slot) => {
-            const pricing = getModelPricing(slot.model.modelId);
-            const failed = slot.phase === 'failed';
-            const statusText = failed
-              ? `Failed (${shortfall(slot)})`
-              : slot.outcome === 'empty'
-                ? 'Empty response'
-                : 'Completed';
-
-            return (
-              <div
-                key={slot.model.modelId}
-                className="flex flex-wrap items-center justify-between gap-2 py-2 text-meta"
-              >
-                <div className="min-w-0">
-                  <span className="font-medium text-ink">{slot.model.displayName}</span>{' '}
-                  <span data-register="machine" className="text-note uppercase text-ink-3">
-                    ({slot.model.provider})
-                  </span>
-                  <span className="block text-micro text-ink-3">
-                    {pricing
-                      ? `${pricing.source} ($${pricing.inputUsdPerMillion}/1M in · $${pricing.outputUsdPerMillion}/1M out USD)`
-                      : 'Pricing source: Unknown (no verified list rate on file)'}
-                  </span>
-                </div>
-
-                <div
-                  data-register="machine"
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 text-note text-ink-2"
-                >
-                  <span>STATUS: {statusText.toUpperCase()}</span>
-                  <span>LATENCY: {nullableLatency(slot.latencyMs)}</span>
-                  <span>
-                    TOKENS: {nullableTokens(slot.inputTokens)} IN /{' '}
-                    {nullableTokens(slot.outputTokens)} OUT
-                  </span>
-                  <span>COST: {estimatedCost(slot.estimatedCostUsd)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      <div className="flex flex-col gap-1 border-t border-line-subtle pt-3 text-micro text-ink-3">
+        <p>
+          Costs are estimates calculated from provider-reported token counts and verified USD list
+          rates — not provider billing records. Missing telemetry is shown as Not available or
+          Unknown, never as zero.
+        </p>
+        {sources.length > 0 && (
+          <ul data-register="machine" className="flex flex-col gap-0.5 text-note text-ink-3">
+            {sources.map((p) => (
+              <li key={p.modelId}>
+                {p.name}: ${p.inputUsdPerMillion}/1M in · ${p.outputUsdPerMillion}/1M out ·{' '}
+                {p.source} · as of {p.asOf}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
+    </div>
+  );
+}
 
-      <p className="border-t border-line-subtle pt-2 text-micro text-ink-3">
-        Costs are estimates calculated from provider-reported token counts and verified USD list
-        rates. Kept separate from provider billing records; missing telemetry is shown as Not
-        available or Unknown.
-      </p>
+function Figure({ label, value, hint }: { label: string; value: string; hint: string }) {
+  const missing = value === 'Not available' || value === 'Unknown';
+  return (
+    <div className="min-w-0">
+      <dt data-register="machine" className="text-note uppercase text-ink-3">
+        {label}
+      </dt>
+      <dd
+        data-register="machine"
+        className={clsx('mt-1 text-ui', missing ? 'text-ink-3' : 'text-ink')}
+      >
+        {value}
+      </dd>
+      <dd className="text-micro text-ink-3">{hint}</dd>
     </div>
   );
 }

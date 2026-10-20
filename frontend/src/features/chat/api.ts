@@ -5,10 +5,23 @@ import {
   type ChatRequest,
 } from '@nexusai/contracts';
 import { json, request, toApiError } from '@/lib/http';
+import { collectPages } from '@/lib/paginate';
 import { readSSE } from '@/lib/sse';
 
-export function fetchMessages(conversationId: string) {
-  return json(`/conversations/${conversationId}/messages`, MessageListResponse);
+/** Pages walk backwards from the newest, so each older page is prepended. */
+export async function fetchMessages(conversationId: string): Promise<MessageListResponse> {
+  const { items, nextCursor } = await collectPages(
+    async (cursor) => {
+      const query = `?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const page = await json(
+        `/conversations/${conversationId}/messages${query}`,
+        MessageListResponse,
+      );
+      return { items: page.messages, nextCursor: page.nextCursor };
+    },
+    { maxPages: 10, order: 'prepend' },
+  );
+  return { messages: items, nextCursor };
 }
 
 export function selectMessageAnswer(

@@ -47,11 +47,14 @@ export const VERIFIED_MODEL_PRICING: Readonly<Record<string, ModelPricing>> = {
   'gemini-flash': {
     modelId: 'gemini-flash',
     upstreamModel: 'gemini-2.5-flash',
-    inputUsdPerMillion: 0.15,
-    outputUsdPerMillion: 0.6,
+    // Paid tier, standard. Output includes thinking tokens, which the adapter
+    // counts. The earlier 0.15 / 0.60 were preview-era rates and understated
+    // output cost about fourfold.
+    inputUsdPerMillion: 0.3,
+    outputUsdPerMillion: 2.5,
     currency: 'USD',
-    source: 'Google AI Developer Standard Pricing (gemini-2.5-flash)',
-    asOf: '2025-05',
+    source: 'Google Gemini API pricing (gemini-2.5-flash, paid tier)',
+    asOf: '2026-10',
   },
   'mistral-large': {
     modelId: 'mistral-large',

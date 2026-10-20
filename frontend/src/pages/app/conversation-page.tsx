@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router';
 import {
-  isRoutable,
   type ChatSelection,
   type Message,
   type MessageListResponse,
@@ -22,7 +21,8 @@ import { prefetchMarkdown } from '@/features/chat/components/markdown-lazy';
 import { MessageList } from '@/features/chat/components/message-list';
 import { UserMessage } from '@/features/chat/components/user-message';
 import { orderedSlots } from '@/features/chat/stream-reducer';
-import { HOMEPAGE_DRAFT_STORAGE_KEY, routes } from '@/lib/routes';
+import { arenaModelsFor, takeHomepageDraft } from '@/lib/homepage-draft';
+import { routes } from '@/lib/routes';
 import { useChatStream } from '@/features/chat/use-chat-stream';
 import { useMessages, messagesKey } from '@/features/chat/use-messages';
 import { conversationsKey, useConversations } from '@/features/conversations/use-conversations';
@@ -48,7 +48,7 @@ export function ConversationPage() {
     routing: user?.preferences.routingMode ?? 'balanced',
   }));
   const [initialDraft, setInitialDraft] = useState<string | undefined>(undefined);
-  const [pendingCompareHandoff, setPendingCompareHandoff] = useState(false);
+  const [compareHandoff, setCompareHandoff] = useState<{ modelIds?: string[] } | null>(null);
   const [combiningMessageId, setCombiningMessageId] = useState<string | null>(null);
   const [retryingTarget, setRetryingTarget] = useState<{
     messageId: string;
@@ -60,36 +60,34 @@ export function ConversationPage() {
   } | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(HOMEPAGE_DRAFT_STORAGE_KEY);
-      if (!raw) return;
-      sessionStorage.removeItem(HOMEPAGE_DRAFT_STORAGE_KEY);
-      const parsed = JSON.parse(raw) as { prompt?: string; mode?: 'standard' | 'compare' };
-      if (parsed.prompt?.trim()) {
-        setInitialDraft(parsed.prompt.trim());
-      }
-      if (parsed.mode === 'compare') {
-        setPendingCompareHandoff(true);
-      }
-    } catch {
-      // Ignore storage errors in restricted environments.
+    const draft = takeHomepageDraft();
+    if (!draft) return;
+    if (draft.prompt.trim()) setInitialDraft(draft.prompt.trim());
+    if (draft.mode === 'compare') {
+      setCompareHandoff(draft.modelIds ? { modelIds: draft.modelIds } : {});
     }
   }, []);
 
+  // Applied once the catalog is known, so the visitor's picks are checked
+  // against what this deployment can actually run.
   useEffect(() => {
-    if (!pendingCompareHandoff || !models?.models.length) return;
-    const routable = models.models.filter((m) => isRoutable(m.availability));
-    const chosen = (routable.length >= 2 ? routable : models.models)
-      .slice(0, 3)
-      .map((m) => m.id);
-    if (chosen.length >= 2) {
-      setSelection({ mode: 'compare', modelIds: chosen });
-    }
-    setPendingCompareHandoff(false);
-  }, [pendingCompareHandoff, models]);
+    if (!compareHandoff || !models?.models.length) return;
+    const chosen = arenaModelsFor(compareHandoff.modelIds, models.models);
+    if (chosen) setSelection({ mode: 'compare', modelIds: chosen });
+    setCompareHandoff(null);
+  }, [compareHandoff, models]);
+
+  /*
+   * The conversation this page's own stream just created. Navigating to it
+   * changes `conversationId`, which must not reset the stream that caused the
+   * navigation — that reset wiped the first answer of every new conversation
+   * mid-generation and left the server's placeholder row on screen instead.
+   */
+  const createdHere = useRef<string | null>(null);
 
   const onConversationCreated = useCallback(
     (id: string) => {
+      createdHere.current = id;
       // replace, not push: Back should not return to a now-stale /c/new.
       navigate(routes.conversation(id), { replace: true });
       void client.invalidateQueries({ queryKey: conversationsKey });
@@ -110,12 +108,19 @@ export function ConversationPage() {
     [onConversationCreated, onSettled],
   );
 
-  const { state, pending, streaming, send, stop, reset } = useChatStream(streamCallbacks);
+  const { state, pending, streaming, active, liveMessageId, send, stop, reset } =
+    useChatStream(streamCallbacks);
 
   const history = messages.data?.messages;
   const { ref: scroller, atBottom, jumpToLatest } = useScrollAnchor(state.text || history?.length);
 
-  useEffect(() => reset(), [conversationId, reset]);
+  useEffect(() => {
+    if (conversationId !== null && conversationId === createdHere.current) {
+      createdHere.current = null;
+      return;
+    }
+    reset();
+  }, [conversationId, reset]);
 
   // Warm the markdown renderer while the user is still typing, so deferring it
   // costs nothing at the moment the first token lands.
@@ -224,11 +229,48 @@ export function ConversationPage() {
   // not off the query status.
   const loadingHistory = conversationId !== null && messages.isPending;
 
+  /*
+   * While a turn is streaming, history can already contain it: the server
+   * inserts the assistant row up front — as `failed`, so a crash can never
+   * leave it looking in flight — and the first turn of a new conversation
+   * navigates to its URL, which fetches history mid-stream. Treating that row
+   * as the answer hid the live stream and put "None of the models could
+   * complete" on screen while every model was still writing.
+   *
+   * So until the stream ends, the live turn owns its id: its placeholder row,
+   * and the user message just before it, are left out of history. Once the
+   * stream settles, history is the record and the optimistic copy steps aside.
+   */
+  const liveId = liveMessageId ?? state.messageId;
+  const inFlight = streaming || active;
+
+  // The placeholder row (failed, empty, no per-model record yet) can still be
+  // cached for a moment after the stream ends, until the refetch lands. Every
+  // finalised assistant row records its plan in `responses`, so an empty one
+  // is the placeholder, not the answer.
   const settled =
-    state.messageId !== null && (history?.some((m) => m.id === state.messageId) ?? false);
+    !inFlight &&
+    liveId !== null &&
+    (history?.some(
+      (m) =>
+        m.id === liveId &&
+        !(m.status === 'failed' && m.responses.length === 0 && m.content === ''),
+    ) ?? false);
+
+  // While the optimistic turn is the one on screen, history leaves out its
+  // rows — the user message and the assistant row after it — so the turn is
+  // never rendered twice or replaced by its placeholder.
+  const historyRows = useMemo(() => {
+    if (settled || pending === null || !liveId || !history) return history;
+    const index = history.findIndex((m) => m.id === liveId);
+    if (index === -1) return history;
+    const start = index > 0 && history[index - 1]?.role === 'user' ? index - 1 : index;
+    return [...history.slice(0, start), ...history.slice(index + 1)];
+  }, [history, liveId, settled, pending]);
+
   const showPendingTurn = pending !== null && !settled;
 
-  const showEmpty = !showPendingTurn && !history?.length && !loadingHistory && !messages.isError;
+  const showEmpty = !showPendingTurn && !historyRows?.length && !loadingHistory && !messages.isError;
 
   return (
     <>
@@ -242,7 +284,7 @@ export function ConversationPage() {
             ) : (
               <div className="flex flex-col gap-8">
                 <MessageList
-                  messages={history}
+                  messages={historyRows}
                   isPending={loadingHistory}
                   isError={messages.isError}
                   onRetry={() => void messages.refetch()}

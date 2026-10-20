@@ -253,6 +253,54 @@ describe('one question → one answer', () => {
     });
   });
 
+  it('does not show the server’s in-flight placeholder as a failure while the answer streams', async () => {
+    const user = userEvent.setup();
+    // What the server really holds mid-turn: the user message, and the
+    // assistant row inserted as `failed` with nothing in it yet.
+    const placeholder: Message = {
+      ...message('a2', 'assistant', ''),
+      status: 'failed',
+      synthesisModel: null,
+      mode: 'compare',
+    };
+    vi.mocked(api.fetchMessages).mockResolvedValue({
+      messages: [...EXISTING, message('u2', 'user', NEW_PROMPT), placeholder],
+      nextCursor: null,
+    });
+
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(api.openChatStream).mockImplementation(async function* () {
+      yield { type: 'start', conversationId: 'abc', messageId: 'a2', plan: [model], mode: 'compare' };
+      yield { type: 'model_start', modelId: 'gpt-4o' };
+      yield { type: 'arena_delta', modelId: 'gpt-4o', text: 'Partial arena text' };
+      await held;
+      yield {
+        type: 'model_complete',
+        modelId: 'gpt-4o',
+        text: 'Partial arena text',
+        outcome: 'complete',
+        latencyMs: 100,
+        inputTokens: null,
+        outputTokens: null,
+      };
+      yield { type: 'complete', messageId: 'a2', latencyMs: 300, firstTokenMs: 40 };
+    });
+
+    const { client } = setup();
+    await user.type(screen.getByRole('textbox', { name: /ask anything/i }), NEW_PROMPT);
+    await user.keyboard('{Enter}');
+    await client.invalidateQueries({ queryKey: messagesKey('abc') });
+
+    await waitFor(() => expect(screen.getByText('Partial arena text')).toBeInTheDocument());
+    expect(screen.queryByText(/could(n't| not) (complete|be generated)/i)).toBeNull();
+    expect(screen.getAllByText(NEW_PROMPT)).toHaveLength(1);
+
+    release?.();
+  });
+
   it('keeps a failed model out of the transcript and still shows one answer', async () => {
     const user = userEvent.setup();
     const second = { modelId: 'gemini-flash', provider: 'google', displayName: 'Gemini 2.5 Flash' };
@@ -307,5 +355,64 @@ describe('one question → one answer', () => {
     for (const leak of [/\b429\b/, /RESOURCE_EXHAUSTED/i, /RATE_LIMITED/, /stack/i, /Error:/]) {
       expect(text).not.toMatch(leak);
     }
+  });
+});
+
+describe('the first message of a new conversation', () => {
+  it('keeps streaming across the navigation to the conversation it created', async () => {
+    const user = userEvent.setup();
+    const client = createTestQueryClient();
+    client.setQueryData(sessionKey, {
+      id: 'u',
+      email: 'a@b.co',
+      displayName: 'A',
+      preferences: { theme: 'system', routingMode: 'balanced', pinnedModelId: null },
+      createdAt: new Date().toISOString(),
+    });
+    client.setQueryData(conversationsKey, { conversations: [], nextCursor: null });
+
+    // History for the new conversation, as the server holds it mid-turn.
+    vi.mocked(api.fetchMessages).mockResolvedValue({
+      messages: [
+        message('u1', 'user', 'brand new question'),
+        { ...message('a1', 'assistant', ''), status: 'failed', synthesisModel: null },
+      ],
+      nextCursor: null,
+    });
+
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(api.openChatStream).mockImplementation(async function* () {
+      yield { type: 'start', conversationId: 'new1', messageId: 'a1', plan: [model], mode: 'manual' };
+      yield { type: 'delta', text: 'Streaming into a brand new conversation.' };
+      await held;
+      yield { type: 'complete', messageId: 'a1', latencyMs: 300, firstTokenMs: 40 };
+    });
+
+    rtlRender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/app']}>
+          <Routes>
+            <Route path="/app" element={<ConversationPage />} />
+            <Route path="/app/chat/:conversationId" element={<ConversationPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /ask anything/i }), 'brand new question');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      // Mid-stream text is published to the last whole word.
+      expect(screen.getByText(/Streaming into a brand new/)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/could(n't| not) (complete|be generated)/i)).toBeNull();
+    expect(screen.getAllByText('brand new question')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /stop generating/i })).toBeInTheDocument();
+
+    release?.();
   });
 });

@@ -33,7 +33,7 @@ export const ROSTER = [
   { provider: 'OpenAI', model: 'GPT-4o' },
   { provider: 'Anthropic', model: 'Claude Sonnet 4.5' },
   { provider: 'Google', model: 'Gemini 2.5 Flash' },
-  { provider: 'Mistral', model: 'Mistral Large' },
+  { provider: 'Mistral', model: 'Mistral Medium' },
   { provider: 'DeepSeek', model: 'DeepSeek V4 Flash' },
   { provider: 'Groq', model: 'GPT-OSS 120B' },
 ] as const;

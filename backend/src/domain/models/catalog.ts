@@ -108,11 +108,14 @@ export const CATALOG: readonly ModelDefinition[] = [
     testOnly: false,
   },
   {
+    // The id predates the switch to Medium and is kept so persisted turns and
+    // saved preferences still resolve. The *name* is what the reader sees on
+    // every answer, and it must name the model that actually ran.
     id: 'mistral-large',
     provider: 'mistral',
     providerDisplayName: 'Mistral',
     providerModelId: 'mistral-medium-latest',
-    displayName: 'Mistral Large',
+    displayName: 'Mistral Medium',
     description: 'European-hosted general reasoning.',
     contextWindow: 128_000,
     maxOutputTokens: 8_192,
@@ -214,6 +217,25 @@ export const CATALOG: readonly ModelDefinition[] = [
     quality: 3,
     speed: 5,
     rank: 920,
+    synthesisCapable: false,
+    deprecated: false,
+    testOnly: true,
+  },
+  {
+    id: 'test-delta',
+    provider: 'test',
+    providerDisplayName: 'Test',
+    providerModelId: 'delta',
+    displayName: 'Test Delta',
+    description: 'Deterministic adapter for development and tests.',
+    contextWindow: 32_000,
+    maxOutputTokens: 4_096,
+    capabilities: text,
+    quality: 3,
+    speed: 5,
+    rank: 930,
+    // A fourth test model so a full four-model Arena can be exercised
+    // locally and in tests, matching the Arena's upper bound.
     synthesisCapable: false,
     deprecated: false,
     testOnly: true,

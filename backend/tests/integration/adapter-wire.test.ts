@@ -42,13 +42,36 @@ beforeAll(async () => {
       lastRequest = { url: req.url!, headers: req.headers, body: raw ? JSON.parse(raw) : null };
       const url = req.url!;
 
-      // --- OpenAI dialect ---
-      if (url.startsWith('/openai/chat/completions')) {
+      // --- In-stream failures after a 200 ---
+      if (url.startsWith('/broken-openai/chat/completions')) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        return writeSplit(res, [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: 'Half an ' } }] })}\n\n`,
+          `data: ${JSON.stringify({ error: { message: 'Rate limit reached', type: 'rate_limit_exceeded' } })}\n\n`,
+        ]);
+      }
+      if (url.startsWith('/broken-anthropic/messages')) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        return writeSplit(res, [
+          `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'Half an ' } })}\n\n`,
+          `event: error\ndata: ${JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } })}\n\n`,
+        ]);
+      }
+
+      // --- OpenAI dialect, and its Groq / Mistral usage variants ---
+      if (url.match(/^\/(openai|groq|mistral)\/chat\/completions/)) {
         if ((lastRequest.body as { stream?: boolean }).stream) {
           res.writeHead(200, { 'content-type': 'text/event-stream' });
+          const usage = { prompt_tokens: 12, completion_tokens: 4 };
+          // OpenAI (include_usage) and Mistral: a final chunk with empty
+          // choices and a `usage` object. Groq: under `x_groq.usage`.
+          const usageFrame = url.startsWith('/groq')
+            ? { choices: [], x_groq: { usage } }
+            : { choices: [], usage };
           return writeSplit(res, [
-            `data: ${JSON.stringify({ choices: [{ delta: { content: 'Hello' } }] })}\n\n`,
-            `data: ${JSON.stringify({ choices: [{ delta: { content: ' world' } }] })}\n\n`,
+            `data: ${JSON.stringify({ choices: [{ delta: { content: 'Hello' } }], usage: null })}\n\n`,
+            `data: ${JSON.stringify({ choices: [{ delta: { content: ' world' } }], usage: null })}\n\n`,
+            `data: ${JSON.stringify(usageFrame)}\n\n`,
             'data: [DONE]\n\n',
           ]);
         }
@@ -66,8 +89,10 @@ beforeAll(async () => {
         if ((lastRequest.body as { stream?: boolean }).stream) {
           res.writeHead(200, { 'content-type': 'text/event-stream' });
           return writeSplit(res, [
+            `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { usage: { input_tokens: 12, output_tokens: 1 } } })}\n\n`,
             `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hello' } })}\n\n`,
             `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: ' world' } })}\n\n`,
+            `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } })}\n\n`,
           ]);
         }
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -81,11 +106,25 @@ beforeAll(async () => {
       }
 
       // --- Google dialect ---
-      if (url.includes(':streamGenerateContent')) {
+      if (url.includes('broken:streamGenerateContent')) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });
         return writeSplit(res, [
-          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Hello' }] } }] })}\n\n`,
-          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: ' world' }] } }] })}\n\n`,
+          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Half an ' }] } }] })}\n\n`,
+          `data: ${JSON.stringify({ error: { code: 503, status: 'UNAVAILABLE', message: 'The model is overloaded.' } })}\n\n`,
+        ]);
+      }
+      if (url.includes('blocked:streamGenerateContent')) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        return writeSplit(res, [
+          `data: ${JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } })}\n\n`,
+        ]);
+      }
+      if (url.includes(':streamGenerateContent')) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        // Usage is cumulative per chunk; 2.5 models report thinking separately.
+        return writeSplit(res, [
+          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Hello' }] } }], usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 1, thoughtsTokenCount: 30 } })}\n\n`,
+          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: ' world' }] } }], usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 4, thoughtsTokenCount: 30 } })}\n\n`,
         ]);
       }
       if (url.includes(':generateContent')) {
@@ -93,7 +132,7 @@ beforeAll(async () => {
         return res.end(
           JSON.stringify({
             candidates: [{ content: { parts: [{ text: 'Four.' }] }, finishReason: 'STOP' }],
-            usageMetadata: { promptTokenCount: 11, candidatesTokenCount: 3 },
+            usageMetadata: { promptTokenCount: 11, candidatesTokenCount: 3, thoughtsTokenCount: 20 },
           }),
         );
       }
@@ -114,6 +153,10 @@ const request = {
   messages: [{ role: 'user' as const, content: 'What is 2 + 2?' }],
   maxOutputTokens: 64,
 };
+
+function usageSink() {
+  return { inputTokens: null as number | null, outputTokens: null as number | null };
+}
 
 async function collect(stream: AsyncIterable<string>): Promise<string> {
   let text = '';
@@ -138,6 +181,30 @@ describe('OpenAI-compatible adapter', () => {
   it('reassembles a stream split across chunk boundaries', async () => {
     expect(await collect(adapter().stream(request, AbortSignal.timeout(5000)))).toBe('Hello world');
   });
+
+  it('asks OpenAI for streamed usage and reads it from the final chunk', async () => {
+    const usage = usageSink();
+    await collect(adapter().stream(request, AbortSignal.timeout(5000), usage));
+    expect((lastRequest.body as Record<string, unknown>).stream_options).toEqual({
+      include_usage: true,
+    });
+    expect(usage).toEqual({ inputTokens: 12, outputTokens: 4 });
+  });
+
+  // Not every OpenAI-dialect endpoint accepts `stream_options`; they report
+  // usage in-band anyway, so the parameter is withheld rather than risked.
+  it.each([
+    ['groq', 'x_groq.usage'],
+    ['mistral', 'a final usage chunk'],
+  ])('reads %s usage from %s without sending stream_options', async (provider) => {
+    const usage = usageSink();
+    const groqish = new OpenAICompatibleAdapter(provider, `${baseUrl}/${provider}`, 'test-key');
+    expect(await collect(groqish.stream(request, AbortSignal.timeout(5000), usage))).toBe(
+      'Hello world',
+    );
+    expect((lastRequest.body as Record<string, unknown>).stream_options).toBeUndefined();
+    expect(usage).toEqual({ inputTokens: 12, outputTokens: 4 });
+  });
 });
 
 describe('Anthropic adapter', () => {
@@ -158,14 +225,22 @@ describe('Anthropic adapter', () => {
   it('reassembles content_block_delta events across chunk boundaries', async () => {
     expect(await collect(adapter().stream(request, AbortSignal.timeout(5000)))).toBe('Hello world');
   });
+
+  it('reads input usage from message_start and the final output from message_delta', async () => {
+    const usage = usageSink();
+    await collect(adapter().stream(request, AbortSignal.timeout(5000), usage));
+    expect(usage).toEqual({ inputTokens: 12, outputTokens: 4 });
+  });
 });
 
 describe('Google adapter', () => {
   const adapter = () => new GoogleAdapter('test-key', baseUrl);
 
-  it('parses a candidate and its usage', async () => {
+  // Thinking tokens are billed at the output rate but reported apart from the
+  // candidates; leaving them out under-reported every 2.5-series turn.
+  it('parses a candidate and its billed usage, thinking included', async () => {
     const result = await adapter().generate(request, AbortSignal.timeout(5000));
-    expect(result).toMatchObject({ text: 'Four.', inputTokens: 11, outputTokens: 3 });
+    expect(result).toMatchObject({ text: 'Four.', inputTokens: 11, outputTokens: 23 });
   });
 
   // Google also accepts `?key=`, which would put the credential into every
@@ -179,5 +254,51 @@ describe('Google adapter', () => {
 
   it('reassembles a stream split across chunk boundaries', async () => {
     expect(await collect(adapter().stream(request, AbortSignal.timeout(5000)))).toBe('Hello world');
+  });
+
+  it('takes the last cumulative usage from the stream, thinking included', async () => {
+    const usage = usageSink();
+    await collect(adapter().stream(request, AbortSignal.timeout(5000), usage));
+    expect(usage).toEqual({ inputTokens: 12, outputTokens: 34 });
+  });
+
+  it('reports an in-band safety block on a stream as CONTENT_POLICY, not an empty answer', async () => {
+    const blocked = { ...request, model: { ...request.model, providerModelId: 'blocked' } };
+    await expect(collect(adapter().stream(blocked, AbortSignal.timeout(5000)))).rejects.toMatchObject(
+      { code: 'CONTENT_POLICY' },
+    );
+  });
+});
+
+/**
+ * Every model call streams, so a provider failure can arrive after the 200 as
+ * an in-band frame. It must surface as an error — never as a short answer that
+ * reads as complete.
+ */
+describe('in-stream provider failures', () => {
+  it('OpenAI dialect: an error frame mid-stream is a RATE_LIMITED failure, not a truncated answer', async () => {
+    const adapter = new OpenAICompatibleAdapter('groq', `${baseUrl}/broken-openai`, 'test-key');
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const chunk of adapter.stream(request, AbortSignal.timeout(5000))) seen.push(chunk);
+      })(),
+    ).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+    expect(seen.join('')).toBe('Half an ');
+  });
+
+  it('Anthropic: an overloaded_error event mid-stream is PROVIDER_UNAVAILABLE', async () => {
+    const adapter = new AnthropicAdapter('test-key', `${baseUrl}/broken-anthropic`);
+    await expect(collect(adapter.stream(request, AbortSignal.timeout(5000)))).rejects.toMatchObject({
+      code: 'PROVIDER_UNAVAILABLE',
+    });
+  });
+
+  it('Google: an error object mid-stream is classified by its code', async () => {
+    const adapter = new GoogleAdapter('test-key', baseUrl);
+    const broken = { ...request, model: { ...request.model, providerModelId: 'broken' } };
+    await expect(collect(adapter.stream(broken, AbortSignal.timeout(5000)))).rejects.toMatchObject({
+      code: 'PROVIDER_UNAVAILABLE',
+    });
   });
 });

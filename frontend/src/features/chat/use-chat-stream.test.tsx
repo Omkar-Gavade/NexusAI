@@ -92,3 +92,30 @@ describe('useChatStream — correctness does not depend on painting', () => {
     }
   });
 });
+
+describe('useChatStream — a stream that ends without a terminal frame', () => {
+  it('settles into an error that keeps the partial text, instead of streaming forever', async () => {
+    vi.mocked(api.openChatStream).mockImplementation(async function* () {
+      yield { type: 'start', conversationId: 'c', messageId: 'm-2', plan: [model], mode: 'manual' };
+      yield { type: 'delta', text: 'half an ' };
+      // The connection drops here: no complete, error or cancelled frame.
+    });
+
+    const callbacks = { onConversationCreated: vi.fn(), onSettled: vi.fn() };
+    const { result } = renderHook(() => useChatStream(callbacks));
+
+    await act(async () => {
+      await result.current.send({
+        conversationId: 'c',
+        prompt: 'q',
+        selection: { mode: 'manual', modelId: 'gpt-4o' },
+      });
+    });
+
+    await waitFor(() => expect(result.current.state.phase).toBe('error'));
+    expect(result.current.streaming).toBe(false);
+    expect(result.current.state.text).toBe('half an ');
+    expect(result.current.state.error).toMatchObject({ code: 'NETWORK_ERROR', partial: true });
+    expect(callbacks.onSettled).toHaveBeenCalledWith('c');
+  });
+});

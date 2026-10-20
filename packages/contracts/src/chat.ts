@@ -6,12 +6,33 @@ import { RoutingDecision } from './routing.ts';
 
 export const MESSAGE_MAX_CHARS = 32_000;
 
+/**
+ * Model Arena bounds, shared so the selector, the homepage composer and the
+ * API enforce the same rule. Four is the most that stay readable side by side,
+ * and every extra model is another paid call per question.
+ */
+export const ARENA_MIN_MODELS = 2;
+export const ARENA_MAX_MODELS = 4;
+
+/**
+ * Distinct model ids, 2–4 of them. A duplicate is rejected rather than
+ * silently collapsed: a client sending one is out of step with the server,
+ * and quietly running fewer models than the reader picked misreports the turn.
+ */
+const ArenaModelIds = z
+  .array(z.string().min(1).max(80))
+  .min(ARENA_MIN_MODELS, `Select at least ${ARENA_MIN_MODELS} models to compare`)
+  .max(ARENA_MAX_MODELS, `Select at most ${ARENA_MAX_MODELS} models to compare`)
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: 'Each model can be selected only once',
+  });
+
 export const ChatSelection = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('auto'), routing: RoutingMode }),
   z.object({ mode: z.literal('manual'), modelId: z.string().min(1).max(80) }),
   z.object({
     mode: z.literal('compare'),
-    modelIds: z.array(z.string().min(1).max(80)).min(2).max(8),
+    modelIds: ArenaModelIds,
   }),
 ]);
 export type ChatSelection = z.infer<typeof ChatSelection>;
@@ -31,17 +52,23 @@ export const SelectAnswerRequest = z.object({
 export type SelectAnswerRequest = z.infer<typeof SelectAnswerRequest>;
 
 export const SynthesizeMessageRequest = z.object({
-  modelIds: z.array(z.string().min(1).max(80)).min(2).max(8).optional(),
+  modelIds: ArenaModelIds.optional(),
 });
 export type SynthesizeMessageRequest = z.infer<typeof SynthesizeMessageRequest>;
 
 /**
  * The stream protocol.
  *
- * Per-model text is NOT streamed in synthesis (`auto` / `manual`) modes. Models
- * emit `model_start` so the Provenance Rail can show them in flight, then
- * `model_complete` carrying the full text. In `compare` (Model Arena) mode,
- * `arena_delta` events stream per-model chunks into each comparison panel.
+ * Every model call streams on the server, so `model_complete` always carries a
+ * measured `firstTokenMs`. What reaches the client while a model is writing
+ * depends on the turn:
+ *
+ * - `compare` (Model Arena): `arena_delta` chunks per model, into its panel.
+ * - one planned model (`manual`, or `auto` routed to one): `delta` chunks — the
+ *   model's text *is* the answer, so it is shown as it is written.
+ * - several planned models (`auto` synthesis): per-model text stays on the
+ *   server; `model_start` / `model_complete` drive the Provenance Rail, then
+ *   the synthesis streams as `delta`.
  */
 export const ChatEvent = z.discriminatedUnion('type', [
   z.object({

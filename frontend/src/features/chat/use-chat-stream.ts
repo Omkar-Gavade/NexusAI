@@ -29,6 +29,14 @@ export function useChatStream(callbacks: {
 }) {
   const [state, dispatch] = useReducer(reduce, initialStreamState);
   const [pending, setPending] = useState<PendingTurn | null>(null);
+  /*
+   * Published synchronously, not through the frame batch below: the page uses
+   * them to keep history from rendering the turn that is still streaming, and
+   * a history fetch can land before the next animation frame — or long before
+   * it, in a background tab where frames do not run at all.
+   */
+  const [active, setActive] = useState(false);
+  const [liveMessageId, setLiveMessageId] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
 
   /**
@@ -78,22 +86,50 @@ export function useChatStream(callbacks: {
 
       const clientMessageId = ulid();
       setPending({ clientMessageId, prompt });
+      setActive(true);
+      setLiveMessageId(null);
       dispatch({ kind: 'reset' });
 
       const abort = new AbortController();
       controller.current = abort;
       let created: string | null = null;
+      let settled = false;
 
       try {
         for await (const event of openChatStream(
           { conversationId, message: prompt, selection, clientMessageId },
           abort.signal,
         )) {
-          if (event.type === 'start' && conversationId === null) {
-            created = event.conversationId;
-            callbacks.onConversationCreated(event.conversationId);
+          if (event.type === 'start') {
+            setLiveMessageId(event.messageId);
+            if (conversationId === null) {
+              created = event.conversationId;
+              callbacks.onConversationCreated(event.conversationId);
+            }
+          }
+          if (event.type === 'complete' || event.type === 'error' || event.type === 'cancelled') {
+            settled = true;
           }
           enqueue({ kind: 'event', event });
+        }
+
+        /*
+         * The body ended without a terminal frame — a proxy cut the connection,
+         * or the server died mid-turn. Without this the reducer stayed in
+         * `models`/`synthesis` forever: a spinner that never stopped and a
+         * composer stuck on Stop. Whatever text arrived is kept as partial.
+         */
+        if (!settled && !abort.signal.aborted) {
+          enqueue({
+            kind: 'event',
+            event: {
+              type: 'error',
+              code: 'NETWORK_ERROR',
+              message: 'The connection closed before the answer finished.',
+              partial: true,
+              requestId: '',
+            },
+          });
         }
       } catch (error) {
         if (abort.signal.aborted) {
@@ -136,6 +172,7 @@ export function useChatStream(callbacks: {
           frame.current = null;
         }
         flush();
+        setActive(false);
 
         callbacks.onSettled(conversationId ?? created);
       }
@@ -150,12 +187,16 @@ export function useChatStream(callbacks: {
 
   const reset = useCallback(() => {
     setPending(null);
+    setLiveMessageId(null);
     dispatch({ kind: 'reset' });
   }, []);
 
   return {
     state: state as StreamState,
     pending,
+    /** From send until the stream has ended, independent of frame timing. */
+    active,
+    liveMessageId,
     streaming: isStreaming(state.phase),
     send,
     stop,

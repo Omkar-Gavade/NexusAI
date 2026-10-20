@@ -20,7 +20,7 @@ const TURN = { requested: 3, responded: 2, concur: 1, diverge: 1 } as const;
 const MODELS = [
   { name: 'Gemini 2.5 Flash', outcome: 'concurs' },
   { name: 'GPT-OSS 120B', outcome: 'diverges' },
-  { name: 'Mistral Large', outcome: 'failed' },
+  { name: 'Mistral Medium', outcome: 'failed' },
 ] as const;
 
 const OUTCOME_LABEL = {

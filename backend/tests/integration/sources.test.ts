@@ -93,7 +93,8 @@ describe('sources', () => {
  * never happen is a number that looks measured but was computed by us.
  */
 describe('usage reporting', () => {
-  it('sums only what the providers reported, and covers the fan-out alone', async () => {
+  it('sums only what the providers reported: the fan-out plus the synthesis pass', async () => {
+    h.testAdapter.reset();
     const { messageId } = await turn('An answer.');
     const doc = await h.db.collection('messages').findOne({ _id: new ObjectId(messageId) });
 
@@ -101,9 +102,17 @@ describe('usage reporting', () => {
     const perModel = responses.map((r) => r.inputTokens).filter((v): v is number => v !== null);
     const total = (doc!.metadata as { inputTokens: number | null }).inputTokens;
 
-    // Documented semantics: the total is exactly the fan-out, with no synthesis
-    // component and nothing estimated to fill the gap.
-    expect(total).toBe(perModel.reduce((a, b) => a + b, 0));
+    // The synthesis request is the one carrying a system prompt. Its input
+    // usage is what the (test) provider reported for it — measured, not
+    // estimated by the orchestrator.
+    const synthesis = h.testAdapter.requests.find((r) => r.messages[0]?.role === 'system');
+    expect(synthesis).toBeDefined();
+    const synthesisInput = synthesis!.messages.reduce(
+      (n, m) => n + Math.ceil(m.content.length / 4),
+      0,
+    );
+
+    expect(total).toBe(perModel.reduce((a, b) => a + b, 0) + synthesisInput);
   }, 30_000);
 
   it('leaves a failed model’s usage null rather than recording a confident zero', async () => {

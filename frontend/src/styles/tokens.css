@@ -110,6 +110,9 @@
      message is offset into. One column at 68ch put both speakers on the same
      axis and left most of a wide display empty. */
   --measure-conversation: 1080px;
+  /* The composer. Narrower than the conversation so it reads as the place you
+     write, centred under both the answer measure and the wider Arena grid. */
+  --measure-composer: 860px;
 
   --sidebar-width: 264px;
   /* Collapsed, the sidebar becomes a rail rather than disappearing: the

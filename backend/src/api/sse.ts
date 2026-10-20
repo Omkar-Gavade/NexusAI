@@ -30,18 +30,35 @@ export class SseWriter {
     // Comment frames keep intermediaries from timing the connection out during
     // the model fan-out, when nothing is being emitted yet.
     this.heartbeat = setInterval(() => {
-      if (!this.closed) this.reply.raw.write(': keepalive\n\n');
+      if (!this.closed && !this.reply.raw.destroyed) this.reply.raw.write(': keepalive\n\n');
     }, HEARTBEAT_MS);
     this.heartbeat.unref?.();
   }
 
-  /** Resolves once the chunk is flushed, so a slow reader applies backpressure. */
+  /**
+   * Resolves once the chunk is flushed, so a slow reader applies backpressure.
+   *
+   * A socket the client has already closed never emits `drain`. Waiting on it
+   * alone parked the route forever after a Stop: the orchestrator was never
+   * pulled again, so the turn was never finalised as cancelled and the user's
+   * concurrent-stream slot was never released. Writes to a gone socket are
+   * dropped, and a pending wait also ends on `close`.
+   */
   async send(event: ChatEvent): Promise<void> {
-    if (this.closed) return;
+    const raw = this.reply.raw;
+    if (this.closed || raw.destroyed || raw.writableEnded) return;
     const frame = `data: ${JSON.stringify(event)}\n\n`;
 
-    if (!this.reply.raw.write(frame)) {
-      await new Promise<void>((resolve) => this.reply.raw.once('drain', resolve));
+    if (!raw.write(frame)) {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          raw.off('drain', done);
+          raw.off('close', done);
+          resolve();
+        };
+        raw.once('drain', done);
+        raw.once('close', done);
+      });
     }
   }
 

@@ -362,14 +362,21 @@ describe('HomePage — Smart Router, Model Arena & Performance Transparency', ()
 
     const composer = screen.getByTestId('homepage-composer');
     expect(composer).toBeInTheDocument();
+    // Scored with every model equally available, so the preview shows the
+    // router's own preference rather than a guess at one deployment's keys.
     expect(screen.getByTestId('homepage-routing-preview')).toHaveTextContent(
-      /Auto-selected Gemini 2\.5 Flash/i,
+      /Auto-selected Claude Sonnet 4\.5 — suitable for this coding & debugging question/i,
     );
 
-    await user.click(within(composer).getByRole('button', { name: /^coding$/i }));
+    await user.click(within(composer).getByRole('button', { name: /^quick$/i }));
     expect(screen.getByTestId('homepage-routing-preview')).toHaveTextContent(
-      /Auto-selected GPT-OSS 120B — suitable for this coding & debugging question/i,
+      /Auto-selected GPT-OSS 120B — suitable for this quick low-latency question/i,
     );
+    // The task scale marks where the prompt landed.
+    expect(within(composer).getByRole('list', { name: /task categories/i })).toHaveTextContent(/quick/i);
+    expect(
+      within(composer).getByText('Quick', { selector: '[aria-current="true"]' }),
+    ).toBeInTheDocument();
 
     await user.click(
       within(composer).getByRole('button', { name: /compare · model arena/i }),

@@ -39,7 +39,11 @@ export function Section({
    * heading stays in view as context rather than scrolling away, and the page
    * gains a second layout so twelve sections do not all present as one shape.
    */
-  layout?: 'stacked' | 'split';
+  /**
+   * `columns` sets the title and the lede side by side above full-width
+   * content — for a section whose demonstration needs the whole measure.
+   */
+  layout?: 'stacked' | 'split' | 'columns';
   className?: string;
 }) {
   return (
@@ -66,22 +70,30 @@ export function Section({
           <Reveal className={clsx(layout === 'split' && 'md:sticky md:top-24 md:self-start')}>
             {label && <Rule label={label} className="mb-8" />}
 
-            {title && (
-              <h2 className="max-w-[24ch] text-section font-[550] text-ink md:text-display">
-                {title}
-              </h2>
-            )}
+            <div
+              className={clsx(
+                layout === 'columns' &&
+                  'md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-end md:gap-16',
+              )}
+            >
+              {title && (
+                <h2 className="max-w-[24ch] text-section font-[550] text-ink md:text-display">
+                  {title}
+                </h2>
+              )}
 
-            {lede && (
-              <p
-                className={clsx(
-                  'mt-4 text-body text-ink-2',
-                  layout === 'split' ? 'max-w-[46ch]' : 'max-w-[62ch]',
-                )}
-              >
-                {lede}
-              </p>
-            )}
+              {lede && (
+                <p
+                  className={clsx(
+                    'text-body text-ink-2',
+                    layout === 'columns' ? 'mt-4 max-w-[52ch] md:mt-0' : 'mt-4',
+                    layout === 'split' ? 'max-w-[46ch]' : layout === 'stacked' && 'max-w-[62ch]',
+                  )}
+                >
+                  {lede}
+                </p>
+              )}
+            </div>
           </Reveal>
 
           {children && (

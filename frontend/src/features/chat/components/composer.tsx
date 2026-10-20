@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { ArrowUp, Check, Columns2, Paperclip, Sparkles, Square, X } from 'lucide-react';
+import { ArrowUp, Columns2, CornerDownRight, Paperclip, Sparkles, Square, X } from 'lucide-react';
 import {
+  ARENA_MAX_MODELS,
+  ARENA_MIN_MODELS,
   isRoutable,
   previewSmartRoute,
   type ChatSelection,
@@ -31,11 +33,17 @@ interface ComposerProps {
 }
 
 /**
- * A precision tool, not a floating pill.
+ * The instrument the whole workspace is operated from.
  *
- * Exposes Standard (Smart Router / single-model override) and Compare (Model
- * Arena) modes directly in the composer toolbar, with live task-routing
- * feedback and multi-model Arena selection.
+ * Three layers, top to bottom, each present only when it has something true to
+ * say: context (the Arena line-up, or the answer a follow-up continues from),
+ * the prompt, and the controls. The Smart Router's live decision sits between
+ * the prompt and the controls because it is a consequence of what is typed —
+ * it changes as you write, so it is read in the same glance as the text.
+ *
+ * Docked rather than floating: the composer is architecture you return to, not
+ * a toast. Its 8px radius is the overlay radius because it is the one surface
+ * that sits above the scrolling conversation.
  */
 export function Composer({
   selection,
@@ -79,6 +87,8 @@ export function Composer({
     [allModels],
   );
 
+  // The same function the server runs, over the same candidates in the same
+  // order, so the preview names the model the request will actually reach.
   const routingPreview = useMemo(() => {
     if (selection.mode !== 'auto' || routableModels.length === 0) return null;
     const candidates = routableModels.map((m) => ({
@@ -102,8 +112,8 @@ export function Composer({
     if (selection.mode === 'compare') return;
     const defaults = routableModels.slice(0, 3).map((m) => m.id);
     const fallback = allModels.slice(0, 2).map((m) => m.id);
-    const chosen = defaults.length >= 2 ? defaults : fallback;
-    if (chosen.length >= 2) {
+    const chosen = defaults.length >= ARENA_MIN_MODELS ? defaults : fallback;
+    if (chosen.length >= ARENA_MIN_MODELS) {
       onSelectionChange({ mode: 'compare', modelIds: chosen });
     }
   };
@@ -112,14 +122,13 @@ export function Composer({
     if (selection.mode !== 'compare') return;
     const exists = selection.modelIds.includes(modelId);
     if (exists) {
-      // Keep at least 2 models selected in Compare mode.
-      if (selection.modelIds.length <= 2) return;
+      if (selection.modelIds.length <= ARENA_MIN_MODELS) return;
       onSelectionChange({
         mode: 'compare',
         modelIds: selection.modelIds.filter((id) => id !== modelId),
       });
     } else {
-      if (selection.modelIds.length >= 5) return;
+      if (selection.modelIds.length >= ARENA_MAX_MODELS) return;
       onSelectionChange({
         mode: 'compare',
         modelIds: [...selection.modelIds, modelId],
@@ -149,7 +158,8 @@ export function Composer({
     return () => cancelAnimationFrame(frame);
   }, [resize]);
 
-  const compareInvalid = selection.mode === 'compare' && selection.modelIds.length < 2;
+  const compareInvalid = selection.mode === 'compare' && selection.modelIds.length < ARENA_MIN_MODELS;
+  const isCompare = selection.mode === 'compare';
 
   const submit = () => {
     const prompt = value.trim();
@@ -158,93 +168,124 @@ export function Composer({
     setValue('');
   };
 
+  const routedTo = routingPreview?.selectedModelIds
+    .map((id) => allModels.find((m) => m.id === id)?.displayName ?? id)
+    .join(', ');
+
   return (
     // `viewport-fit=cover` is set on the viewport meta, so on a notched iPhone
     // the bottom inset is real screen the browser will happily draw under.
     // Without this the send button sits beneath the home indicator.
-    <div className="px-(--gutter) pb-[max(1rem,env(safe-area-inset-bottom))] max-lg:px-4">
+    <div className="relative px-(--gutter) pb-[max(0.75rem,env(safe-area-inset-bottom))] max-lg:px-3">
+      {/* The conversation scrolls under the composer and fades rather than
+          being cut by a hard edge. Functional, not decoration: it tells the
+          reader there is more above. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 -top-8 h-8 bg-linear-to-b from-transparent to-canvas"
+      />
       <form
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
         aria-label="Message composer"
-        className="mx-auto w-full max-w-(--measure-conversation)"
+        className="mx-auto w-full max-w-(--measure-composer)"
       >
         <div
           className={clsx(
-            'rounded-control border bg-workspace p-3 transition-colors duration-(--duration-instant)',
-            focused ? 'border-accent' : 'border-line-control',
+            'group/composer relative rounded-overlay border bg-raised shadow-float',
+            'transition-[border-color,box-shadow] duration-(--duration-quick) ease-out',
+            focused
+              ? 'border-accent/60 shadow-[var(--shadow-float-value),0_0_0_3px_color-mix(in_oklab,var(--accent)_14%,transparent)]'
+              : 'border-line hover:border-line-strong',
             disabled && 'opacity-60',
           )}
         >
           {followUpContext && (
-            <div className="mb-2 flex items-center justify-between gap-2 rounded-control border border-line-subtle bg-elevated px-2.5 py-1.5 text-meta text-ink-2">
-              <span className="truncate">
+            <div className="flex items-center gap-2 border-b border-line-subtle px-3.5 py-2 text-meta text-ink-2 motion-safe:animate-[nx-slide-down_160ms_var(--ease-out)]">
+              <CornerDownRight size={13} aria-hidden="true" className="shrink-0 text-accent" />
+              <span className="min-w-0 flex-1 truncate">
                 Continuing with selected answer from{' '}
-                <strong className="font-medium text-ink">{followUpContext.modelName}</strong>
+                <strong className="font-[550] text-ink">{followUpContext.modelName}</strong>
               </span>
               {followUpContext.onClear && (
                 <button
                   type="button"
                   onClick={followUpContext.onClear}
                   aria-label="Clear selected answer context"
-                  className="inline-flex items-center gap-1 rounded-xs px-1.5 py-0.5 text-micro text-ink-3 hover:bg-hover hover:text-ink"
+                  className="inline-flex h-6 items-center gap-1 rounded-control px-1.5 text-micro text-ink-3 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
                 >
-                  <X size={11} aria-hidden="true" />
+                  <X size={12} aria-hidden="true" />
                   Clear
                 </button>
               )}
             </div>
           )}
 
-          {selection.mode === 'compare' && allModels.length > 0 && (
+          {isCompare && allModels.length > 0 && (
             <div
               role="group"
               aria-label="Arena comparison models"
-              className="mb-2.5 border-b border-line-subtle pb-2.5"
+              className="border-b border-line-subtle px-3.5 pb-2.5 pt-2.5 motion-safe:animate-[nx-slide-down_160ms_var(--ease-out)]"
             >
-              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <div className="mb-2 flex items-baseline justify-between gap-3">
                 <span data-register="machine" className="text-note uppercase text-ink-3">
-                  MODEL ARENA · SELECT 2–5 MODELS TO COMPARE CONCURRENTLY
+                  Arena line-up
                 </span>
-                <span data-register="machine" className="text-meta text-ink-2">
-                  {selection.modelIds.length} selected
+                <span data-register="machine" className="text-meta text-ink-3" aria-live="polite">
+                  <span className="text-ink">{selection.modelIds.length}</span> of{' '}
+                  {ARENA_MIN_MODELS}–{ARENA_MAX_MODELS} selected
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {allModels.map((m, idx) => {
+                {allModels.map((m) => {
                   const routable = isRoutable(m.availability);
-                  const isSelected = selection.modelIds.includes(m.id);
-                  const lockedMinimum = isSelected && selection.modelIds.length <= 2;
+                  const position = selection.modelIds.indexOf(m.id);
+                  const isSelected = position !== -1;
+                  const atMinimum = isSelected && selection.modelIds.length <= ARENA_MIN_MODELS;
+                  const atMaximum = !isSelected && selection.modelIds.length >= ARENA_MAX_MODELS;
+                  const reason = !routable
+                    ? (m.availabilityReason ?? 'Model is currently unavailable')
+                    : atMinimum
+                      ? `At least ${ARENA_MIN_MODELS} models are required in Compare mode`
+                      : atMaximum
+                        ? `The Arena compares at most ${ARENA_MAX_MODELS} models`
+                        : `${m.displayName} (${m.provider.displayName})`;
                   return (
                     <button
                       key={m.id}
                       type="button"
                       disabled={!routable}
                       aria-pressed={isSelected}
-                      title={
-                        !routable
-                          ? (m.availabilityReason ?? 'Model is currently unavailable')
-                          : lockedMinimum
-                            ? 'At least 2 models are required in Compare mode'
-                            : `${m.displayName} (${m.provider.displayName})`
-                      }
+                      aria-disabled={atMaximum || atMinimum || undefined}
+                      title={reason}
                       onClick={() => toggleCompareModel(m.id)}
                       className={clsx(
-                        'inline-flex h-(--control-sm) items-center gap-1.5 rounded-control border px-2 text-meta transition-colors duration-(--duration-instant)',
+                        'inline-flex h-(--control-sm) items-center gap-1.5 rounded-control border px-2 text-meta',
+                        'transition-[background-color,border-color,color] duration-(--duration-instant) ease-out',
                         isSelected
-                          ? 'border-accent bg-selected text-ink'
-                          : 'border-line-subtle bg-elevated text-ink-2 hover:border-line-control hover:text-ink',
-                        !routable && 'cursor-not-allowed opacity-45',
+                          ? 'border-accent/50 bg-selected text-ink'
+                          : 'border-line bg-workspace text-ink-2 hover:border-line-strong hover:text-ink',
+                        !routable && 'opacity-45',
+                        atMaximum && 'opacity-60',
                       )}
                     >
-                      <ModelMark index={idx} />
+                      {isSelected ? (
+                        <span
+                          data-register="machine"
+                          className="grid size-3.5 place-items-center rounded-mark bg-accent text-[10px] leading-none text-ink-inv motion-safe:animate-[nx-pop_160ms_var(--ease-out)]"
+                          aria-hidden="true"
+                        >
+                          {position + 1}
+                        </span>
+                      ) : (
+                        <ModelMark index={allModels.indexOf(m)} />
+                      )}
                       <span>{m.displayName}</span>
-                      <span data-register="machine" className="text-note text-ink-3">
+                      <span data-register="machine" className="text-note text-ink-3 max-sm:hidden">
                         {m.provider.displayName}
                       </span>
-                      {isSelected && <Check size={11} aria-hidden="true" className="text-accent" />}
                     </button>
                   );
                 })}
@@ -262,8 +303,8 @@ export function Composer({
             value={value}
             disabled={disabled}
             placeholder={
-              selection.mode === 'compare'
-                ? 'Ask one prompt to compare selected models side by side…'
+              isCompare
+                ? `Ask once — ${selection.modelIds.length} models answer side by side…`
                 : 'Ask anything…'
             }
             enterKeyHint="send"
@@ -286,7 +327,7 @@ export function Composer({
               }
             }}
             className={clsx(
-              'block max-h-(--composer-max-height) min-h-[27px] w-full',
+              'block max-h-(--composer-max-height) min-h-[52px] w-full px-3.5 pb-1 pt-3',
               // `ink-3`, not `ink-off`. The placeholder is the only text in an empty
               // composer and it is what tells you what the field is for — an
               // enabled control's placeholder is not covered by WCAG 1.4.3's
@@ -298,23 +339,32 @@ export function Composer({
             )}
           />
 
-          <AttachmentTray
-            attachments={attachments}
-            onRemove={(id) => setAttachments((list) => list.filter((a) => a.id !== id))}
-            onRetry={() => undefined}
-          />
+          <div className="px-3.5">
+            <AttachmentTray
+              attachments={attachments}
+              onRemove={(id) => setAttachments((list) => list.filter((a) => a.id !== id))}
+              onRetry={() => undefined}
+            />
+          </div>
 
           {selection.mode === 'auto' && routingPreview && routingPreview.selectedModelIds.length > 0 && (
             <div
               data-testid="smart-routing-indicator"
-              className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line-subtle pt-2 text-meta text-ink-2"
+              title={routingPreview.reason}
+              className="flex min-w-0 items-center gap-2 px-3.5 pb-1 pt-1 text-meta text-ink-3"
             >
-              <span className="inline-flex min-w-0 items-center gap-1.5">
-                <Sparkles size={12} aria-hidden="true" className="shrink-0 text-accent" />
-                <span className="truncate">{routingPreview.reason}</span>
+              <span
+                data-register="machine"
+                className="inline-flex shrink-0 items-center gap-1 rounded-mark border border-accent/30 bg-accent-quiet px-1.5 text-note uppercase leading-[18px] text-accent"
+              >
+                <Sparkles size={10} aria-hidden="true" />
+                {routingPreview.taskCategory}
               </span>
-              <span data-register="machine" className="text-note uppercase text-ink-3">
-                TASK: {routingPreview.taskCategory.toUpperCase()}
+              {/* The full sentence stays in the DOM for assistive tech and the
+                  tooltip; on narrow screens only the destination is shown. */}
+              <span className="min-w-0 truncate max-sm:hidden">{routingPreview.reason}</span>
+              <span data-register="machine" className="min-w-0 truncate sm:hidden" aria-hidden="true">
+                → {routedTo}
               </span>
             </div>
           )}
@@ -322,27 +372,32 @@ export function Composer({
           {selection.mode === 'manual' && (
             <div
               data-testid="manual-override-indicator"
-              className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line-subtle pt-2 text-meta text-ink-2"
+              className="flex min-w-0 items-center gap-2 px-3.5 pb-1 pt-1 text-meta text-ink-3"
             >
-              <span className="truncate">
-                Manual override:{' '}
-                <strong className="font-medium text-ink">
+              <span
+                data-register="machine"
+                className="shrink-0 rounded-mark border border-line px-1.5 text-note uppercase leading-[18px] text-ink-2"
+              >
+                Manual
+              </span>
+              <span className="min-w-0 truncate">
+                <strong className="font-[550] text-ink-2">
                   {allModels.find((m) => m.id === selection.modelId)?.displayName ??
                     selection.modelId}
                 </strong>{' '}
-                — bypasses automatic routing.
+                answers alone — no routing, no synthesis.
               </span>
               <button
                 type="button"
                 onClick={() => onSelectionChange({ mode: 'auto', routing: lastRouting })}
-                className="text-micro text-accent hover:underline"
+                className="ml-auto shrink-0 rounded-control px-1.5 text-micro text-accent transition-colors duration-(--duration-instant) hover:bg-hover"
               >
                 Use Smart Router
               </button>
             </div>
           )}
 
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 px-2 pb-2 pt-1">
             <IconButton
               size="sm"
               label="Attach a file — not available yet"
@@ -353,46 +408,68 @@ export function Composer({
             <div
               role="group"
               aria-label="Interaction mode"
-              className="inline-flex h-(--control-sm) items-center rounded-control border border-line-subtle bg-elevated p-0.5"
+              className="relative inline-grid h-(--control-sm) shrink-0 grid-cols-[1fr_1fr] items-center rounded-control border border-line bg-workspace p-0.5"
             >
+              {/* One sliding fill rather than two toggled backgrounds, so the
+                  change of mode reads as a move between two positions. */}
+              <span
+                aria-hidden="true"
+                className={clsx(
+                  'absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[3px] bg-active',
+                  'transition-transform duration-(--duration-quick) ease-out',
+                  isCompare && 'translate-x-full',
+                )}
+              />
               <button
                 type="button"
-                aria-pressed={selection.mode !== 'compare'}
+                aria-pressed={!isCompare}
                 onClick={switchToStandard}
                 className={clsx(
-                  'inline-flex h-full items-center gap-1 rounded-xs px-2 text-meta transition-colors duration-(--duration-instant)',
-                  selection.mode !== 'compare'
-                    ? 'bg-selected font-medium text-ink'
-                    : 'text-ink-3 hover:text-ink',
+                  'relative inline-flex h-full items-center justify-center gap-1 px-2 text-meta transition-colors duration-(--duration-instant)',
+                  !isCompare ? 'font-[550] text-ink' : 'text-ink-3 hover:text-ink',
                 )}
               >
+                <Sparkles size={12} aria-hidden="true" className={clsx('max-sm:hidden', !isCompare && 'text-accent')} />
                 Standard
               </button>
               <button
                 type="button"
-                aria-pressed={selection.mode === 'compare'}
-                disabled={allModels.length < 2}
+                aria-pressed={isCompare}
+                disabled={allModels.length < ARENA_MIN_MODELS}
                 onClick={switchToCompare}
                 className={clsx(
-                  'inline-flex h-full items-center gap-1 rounded-xs px-2 text-meta transition-colors duration-(--duration-instant)',
-                  selection.mode === 'compare'
-                    ? 'bg-selected font-medium text-ink'
-                    : 'text-ink-3 hover:text-ink',
-                  allModels.length < 2 && 'cursor-not-allowed opacity-50',
+                  'relative inline-flex h-full items-center justify-center gap-1 px-2 text-meta transition-colors duration-(--duration-instant)',
+                  isCompare ? 'font-[550] text-ink' : 'text-ink-3 hover:text-ink',
+                  allModels.length < ARENA_MIN_MODELS && 'opacity-50',
                 )}
               >
-                <Columns2 size={12} aria-hidden="true" />
+                <Columns2 size={12} aria-hidden="true" className={clsx('max-sm:hidden', isCompare && 'text-accent')} />
                 Compare
               </button>
             </div>
 
-            <ModelSelector selection={selection} onChange={onSelectionChange} />
+            {!isCompare && (
+              <div className="min-w-0 shrink">
+                <ModelSelector selection={selection} onChange={onSelectionChange} />
+              </div>
+            )}
 
-            <span className="flex-1" />
+            <span className="min-w-0 flex-1" />
+
+            <span
+              className={clsx(
+                'text-micro text-ink-3 transition-opacity duration-(--duration-quick) max-md:hidden',
+                focused && !streaming && !disabled ? 'opacity-100' : 'opacity-0',
+              )}
+              aria-hidden={!focused}
+            >
+              <Kbd keys={['enter']} /> send <span className="mx-1 text-ink-off">·</span>
+              <Kbd keys={['shift', 'enter']} /> new line
+            </span>
 
             {streaming ? (
               <IconButton
-                size="sm"
+                size="md"
                 variant="secondary"
                 label="Stop generating"
                 icon={<Square size={11} aria-hidden="true" className="fill-current" />}
@@ -400,10 +477,10 @@ export function Composer({
               />
             ) : (
               <IconButton
-                size="sm"
+                size="md"
                 variant="primary"
                 label="Send message"
-                icon={<ArrowUp size={14} aria-hidden="true" />}
+                icon={<ArrowUp size={15} aria-hidden="true" />}
                 disabled={disabled || value.trim().length === 0 || compareInvalid}
                 onClick={submit}
               />
@@ -411,17 +488,15 @@ export function Composer({
           </div>
         </div>
 
-        <p className="mt-2 h-4 text-center text-micro text-ink-3">
-          {disabled && disabledReason ? (
-            disabledReason
-          ) : focused ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Kbd keys={['enter']} /> to send
-              <span aria-hidden="true">·</span>
-              <Kbd keys={['shift', 'enter']} /> for a new line
-            </span>
-          ) : null}
-        </p>
+        {disabled && disabledReason ? (
+          <p role="status" className="mt-2 text-center text-micro text-ink-3">
+            {disabledReason}
+          </p>
+        ) : (
+          <p className="mt-1.5 text-center text-micro text-ink-3 max-md:hidden">
+            Answers come from third-party models. Check anything that matters.
+          </p>
+        )}
       </form>
     </div>
   );

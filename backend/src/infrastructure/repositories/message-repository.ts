@@ -49,11 +49,25 @@ export class MessageRepository {
     };
   }
 
-  /** Oldest-first, bounded — the context window for a new turn. */
-  recentForContext(conversationId: string, limit: number): Promise<MessageDoc[]> {
+  /**
+   * Oldest-first, bounded — the context window for a turn.
+   *
+   * `beforeId` bounds it to what preceded a given message, so re-running one
+   * model on an earlier turn sees the conversation as it stood then. The `_id`
+   * tie-break matters: a user message and its answer can share a millisecond.
+   */
+  recentForContext(
+    conversationId: string,
+    limit: number,
+    beforeId?: ObjectId,
+  ): Promise<MessageDoc[]> {
     return this.messages
-      .find({ conversationId: new ObjectId(conversationId), status: 'complete' })
-      .sort({ createdAt: -1 })
+      .find({
+        conversationId: new ObjectId(conversationId),
+        status: 'complete',
+        ...(beforeId ? { _id: { $lt: beforeId } } : {}),
+      })
+      .sort({ createdAt: -1, _id: -1 })
       .limit(limit)
       .toArray()
       .then((rows) => rows.reverse());
@@ -112,6 +126,25 @@ export class MessageRepository {
     >,
   ): Promise<void> {
     await this.messages.updateOne({ _id: messageId }, { $set: patch });
+  }
+
+  /**
+   * Replaces one model's response in place.
+   *
+   * A positional update rather than rewriting the array: two models retried at
+   * once on the same turn each read the old array, and whichever wrote last
+   * erased the other's new answer.
+   */
+  async replaceResponse(
+    messageId: ObjectId,
+    modelId: string,
+    response: MessageDoc['responses'][number],
+  ): Promise<MessageDoc | null> {
+    return this.messages.findOneAndUpdate(
+      { _id: messageId },
+      { $set: { 'responses.$[target]': response } },
+      { arrayFilters: [{ 'target.model.modelId': modelId }], returnDocument: 'after' },
+    );
   }
 
   async deleteForConversation(conversationId: string): Promise<number> {

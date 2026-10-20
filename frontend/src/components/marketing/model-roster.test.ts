@@ -59,15 +59,18 @@ describe('public model roster', () => {
 });
 
 /**
- * The workspace preview prints catalog *ids* (`gpt-4o`), not display names,
- * because that is what a comparison card header shows in the real product.
- * Those ids are equally capable of drifting, so they are checked the same way.
+ * The hero instrument and the Arena preview carry catalog *ids*, because the
+ * homepage hands an Arena line-up to the workspace by id. Ids drift as easily
+ * as names, so they are checked against the catalog the same way.
  */
-describe('workspace preview', () => {
-  const preview = readFileSync(
-    resolve(process.cwd(), 'src/components/marketing/product-preview.tsx'),
-    'utf8',
-  );
+describe('homepage previews', () => {
+  const sources = {
+    hero: readFileSync(resolve(process.cwd(), 'src/components/marketing/hero-composer.tsx'), 'utf8'),
+    arena: readFileSync(
+      resolve(process.cwd(), 'src/components/marketing/model-arena-preview.tsx'),
+      'utf8',
+    ),
+  };
 
   /** Ids of the real (non-test) models, in catalog order. */
   function catalogIds(): string[] {
@@ -77,30 +80,30 @@ describe('workspace preview', () => {
       .map((m) => m[1]!);
   }
 
-  it('names only models that exist in the catalog', () => {
+  it('the hero instrument scores exactly the catalog’s real models, in catalog order', () => {
+    const shown = [...sources.hero.matchAll(/\{ id: '([^']+)', contextWindow/g)].map((m) => m[1]!);
+    expect(shown).toEqual(catalogIds());
+  });
+
+  it('the Arena preview names only models that exist in the catalog', () => {
     const ids = catalogIds();
-    expect(ids.length).toBeGreaterThanOrEqual(6);
-
-    const shown = [...preview.matchAll(/modelId: '([^']+)'/g)].map((m) => m[1]!);
+    const shown = [...sources.arena.matchAll(/modelId: '([^']+)'/g)].map((m) => m[1]!);
     expect(shown.length).toBeGreaterThan(0);
-
     for (const id of shown) {
       expect(ids, `${id} is not a catalog model id`).toContain(id);
     }
   });
 
-  it('shows a real answer surface rather than placeholder bars', () => {
-    // The preview this replaced was grey `bg-hover` blocks standing in for
-    // text. It read as an unfinished wireframe, which is a worse claim about
-    // the product than showing nothing. If those come back, so does the bug.
-    expect(preview).not.toMatch(/Skeleton/);
-    expect(preview).toMatch(/agreementSentence/);
-    expect(preview).toMatch(/latency\(/);
+  it('shows real answer text and measured-looking telemetry, not placeholder bars', () => {
+    expect(sources.arena).not.toMatch(/Skeleton/);
+    expect(sources.arena).toMatch(/latency\(/);
   });
 
   it('presents no capability the matrix marks as planned', () => {
     // Sources and attachments are Planned. The real answer surface renders a
-    // SOURCES disclosure when it has any; the preview must not imply one.
-    expect(preview).not.toMatch(/\bSOURCES\b|\bSourceList\b|Paperclip/);
+    // SOURCES disclosure when it has any; a preview must not imply one.
+    for (const source of Object.values(sources)) {
+      expect(source).not.toMatch(/\bSOURCES\b|\bSourceList\b|Paperclip/);
+    }
   });
 });

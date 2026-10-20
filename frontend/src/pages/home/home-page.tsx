@@ -1,15 +1,16 @@
+import type { ReactNode } from 'react';
+import clsx from 'clsx';
 import { Navigate } from 'react-router';
 import { CtaLink } from '@/components/marketing/cta-link';
 import { FailoverDiagram } from '@/components/marketing/failover-diagram';
-import { FanOutDiagram } from '@/components/marketing/fan-out-diagram';
 import { HeroComposer } from '@/components/marketing/hero-composer';
 import { MarketingLayout } from '@/components/marketing/marketing-layout';
 import { ModelArenaPreview } from '@/components/marketing/model-arena-preview';
-import { ModelRoster } from '@/components/marketing/model-roster';
+import { ModelRoster, ROSTER } from '@/components/marketing/model-roster';
 import { OrchestrationGraph } from '@/components/marketing/orchestration-graph';
 import { PerformanceTransparency } from '@/components/marketing/performance-transparency';
-import { ProductPreview } from '@/components/marketing/product-preview';
 import { RailLegend } from '@/components/marketing/rail-legend';
+import { Reveal } from '@/components/marketing/reveal';
 import { ResponseModes } from '@/components/marketing/response-modes';
 import { MarketingContainer, Section } from '@/components/marketing/section';
 import { StanceLegend } from '@/components/marketing/stance-legend';
@@ -56,23 +57,31 @@ export function HomePage() {
 
   return (
     <MarketingLayout>
-      {/* --- 01 · Hero ---------------------------------------------------- */}
-      <section className="bg-canvas">
+      {/* --- Hero: the claim, and the router demonstrating it ------------- */}
+      <section className="relative overflow-hidden bg-canvas">
+        {/* A measured grid behind the instrument — the one textured surface
+            on the page, and the only place it appears. Masked so it fades
+            before it reaches the copy. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:linear-gradient(var(--border-subtle)_1px,transparent_1px),linear-gradient(90deg,var(--border-subtle)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_70%_80%_at_78%_45%,black,transparent_75%)]"
+        />
         <MarketingContainer>
-          <div className="pb-16 pt-14 md:pb-20 md:pt-16">
-            <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:gap-14">
+          <div className="relative pb-14 pt-12 md:pb-20 md:pt-16">
+            <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-14">
               <div>
                 <Rule label="MULTI-MODEL AI WORKSPACE" className="mb-8" />
 
-                <h1 className="max-w-[16ch] text-hero font-[550] text-ink">
-                  One question. The right model — or several.
+                <h1 className="max-w-[15ch] text-hero font-[550] text-ink [text-wrap:balance]">
+                  One question. The right model{' '}
+                  <span className="text-ink-3">— or several.</span>
                 </h1>
 
-                <p className="mt-6 max-w-[46ch] text-body text-ink-2">
-                  Let Smart Routing pick a model for your task, compare two or more models side by
-                  side in the Model Arena, or send the question to several at once and reconcile
-                  what comes back into one answer — with measured latency, token counts, and
-                  provenance.
+                <p className="mt-6 max-w-[44ch] text-body text-ink-2">
+                  Smart Routing picks a model for the task. The Model Arena puts the same question
+                  to two to four models side by side. Synthesis reconciles several answers into
+                  one. Every answer records which models ran, how long they took, and what they
+                  cost.
                 </p>
 
                 <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -84,70 +93,61 @@ export function HomePage() {
 
                 <p
                   data-register="machine"
-                  className="mt-9 border-t border-line-subtle pt-5 text-note uppercase text-ink-3"
+                  className="mt-10 max-w-[44ch] text-note uppercase leading-5 text-ink-3"
                 >
+                  <span aria-hidden="true" className="mr-2 inline-block size-1.5 bg-warn align-middle" />
                   Pre-launch · Real model execution verified · Not publicly deployed
                 </p>
               </div>
 
-              <div className="flex flex-col gap-4">
+              <div>
                 <HeroComposer />
-                <div className="border border-line-subtle bg-workspace p-3 md:p-4">
-                  <FanOutDiagram />
-                </div>
               </div>
             </div>
           </div>
         </MarketingContainer>
+
+        {/* The roster, as a line rather than a pitch. */}
+        <div className="relative border-t border-line-subtle bg-canvas">
+          <MarketingContainer>
+            <p
+              data-register="machine"
+              className="flex flex-wrap items-center gap-x-5 gap-y-2 py-4 text-meta text-ink-3"
+            >
+              <span className="text-note uppercase text-ink-2">Six models · six providers</span>
+              {ROSTER.map((entry) => (
+                <span key={entry.model} className="whitespace-nowrap">
+                  {entry.model}
+                </span>
+              ))}
+            </p>
+          </MarketingContainer>
+        </div>
       </section>
 
-      {/* --- 02 · The choice ---------------------------------------------- */}
+      {/* --- The choice --------------------------------------------------- */}
       <Section
         id="modes"
         surface="raised"
+        layout="columns"
         label="WAYS TO ASK"
         title="Direct, Model Arena compare, or synthesised."
-        lede="One decision, made per question rather than per account, next to the composer. Let Smart Routing pick a single model that answers in its own words, compare multiple models side by side in the Model Arena and choose your preferred response, or run several models and let a synthesis pass reconcile them."
+        lede="One decision, made per question rather than per account, next to the composer. Let Smart Routing pick a single model that answers in its own words, compare models side by side in the Model Arena and keep the answer you prefer, or run several and let a synthesis pass reconcile them."
       >
         <ResponseModes />
-
-        <div className="mt-12 grid gap-6 border-t border-line-subtle pt-10 md:grid-cols-2">
-          <div>
-            <h3 className="text-title font-[550] text-ink">
-              Smart Routing classifies the task, not just the model list.
-            </h3>
-            <p className="mt-2 max-w-[54ch] text-ui text-ink-2">
-              In Standard mode, a deterministic classifier inspects your prompt for coding and
-              debugging, research and evidence, summarization, reasoning, or quick questions —
-              selecting the best fit among models that are configured and healthy on the server,
-              while keeping a manual override in reach.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-title font-[550] text-ink">
-              Workflow: ask, compare, choose, optionally synthesize.
-            </h3>
-            <p className="mt-2 max-w-[54ch] text-ui text-ink-2">
-              Switch to Compare mode to send one prompt to two or more models concurrently. Inspect
-              each response in its own panel, select the answer you want follow-up questions to use
-              as context, or click Combine answers to run a synthesis pass over the completed
-              outputs.
-            </p>
-          </div>
-        </div>
       </Section>
 
-      {/* --- 03 · Models --------------------------------------------------- */}
+      {/* --- The Arena ---------------------------------------------------- */}
       <Section
-        id="models"
-        label="THE MODELS"
-        title="Six models across six providers."
-        lede="Any one of them can answer on its own, be compared side by side in the Model Arena, or contribute to synthesis. The selector lists every model the deployment knows about, available or not."
+        id="product"
+        label="MODEL ARENA"
+        title="Two to four answers, side by side, as they arrive."
+        lede="Each column streams on its own and reports its own time to first token. Pick the answer you trust and follow-up questions build on it alone; combine them only when you ask to. A model that fails is retried in its column without touching the others."
       >
-        <ModelRoster />
+        <ModelArenaPreview />
       </Section>
 
-      {/* --- 04 · How it works --------------------------------------------- */}
+      {/* --- How a turn runs ---------------------------------------------- */}
       <Section
         id="how-it-works"
         surface="raised"
@@ -155,136 +155,119 @@ export function HomePage() {
         title="Models run in parallel, and finish when they finish."
         lede="The question goes to every selected model at once, bounded by a worker pool rather than issued as an unbounded burst. Each result is reported the moment it lands rather than held until the slowest finishes — and some do not land at all."
       >
-        <OrchestrationGraph />
-        <div className="mt-16">
+        <div className="grid gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
+          <OrchestrationGraph />
           <StepList steps={STEPS} />
         </div>
       </Section>
 
-      {/* --- 05 · Synthesis ------------------------------------------------ */}
+      {/* --- Synthesis ---------------------------------------------------- */}
+      {/* One anchor over the section and its caveat: the caveat is part of
+          the synthesis argument, set apart only typographically. */}
+      <div id="synthesis">
       <Section
-        id="synthesis"
+        layout="split"
         label="SYNTHESIS"
         title="From several responses to one reasoned answer."
         lede="Reconciling is the hard half. Anything can call four APIs and show you four columns — that hands the work back to you. The synthesis pass reads the responses that returned and writes the single answer you actually read, stating agreement once and naming disagreement rather than quietly choosing a side."
       >
         <SynthesisDiagram />
 
-        <div className="mt-16">
+        <div className="mt-12">
           <h3 className="text-title font-[550] text-ink">Agreement is judged, never inferred.</h3>
-          <p className="mt-2 max-w-[62ch] text-ui text-ink-2">
+          <p className="mt-2 max-w-[56ch] text-ui text-ink-2">
             The synthesiser classifies each contributing model against the answer it just wrote,
             in an explicit verdict block. Stance is never derived from string similarity, a
             majority count, or response length — and a model the synthesiser did not classify
             stays unknown rather than being rounded up.
           </p>
-          <div className="mt-8">
+          <div className="mt-6">
             <StanceLegend />
           </div>
         </div>
-
-        <p className="mt-16 max-w-[62ch] text-body text-ink-2">
-          Reconciled is not the same as correct. Synthesis reconciles the responses it was
-          given; it does not check them against a source of truth, and several models agreeing
-          is not proof that they are right. What you get is one answer plus the record of how it
-          was assembled, so you can see when the models split and go and read the response that
-          disagreed.
-        </p>
       </Section>
 
-      {/* --- 06 · Provenance & Performance Transparency -------------------- */}
+      {/* The one typographic moment on the page: the caveat, set as large as
+          the claim it qualifies. */}
+      <section aria-label="What synthesis does not do" className="border-t border-line-subtle bg-canvas">
+        <MarketingContainer>
+          <Reveal>
+            <figure className="py-16 md:py-24">
+              <blockquote className="max-w-[26ch] text-section font-[550] text-ink md:text-[clamp(28px,1.2rem+1.6vw,40px)] md:leading-[1.15] md:tracking-[-0.02em]">
+                Reconciled is not the same as correct.
+              </blockquote>
+              <figcaption className="mt-5 max-w-[62ch] text-body text-ink-2">
+                Synthesis reconciles the responses it was given; it does not check them against a
+                source of truth, and several models agreeing is not proof that they are right.
+                What you get is one answer plus the record of how it was assembled, so you can see
+                when the models split and go and read the response that disagreed.
+              </figcaption>
+            </figure>
+          </Reveal>
+        </MarketingContainer>
+      </section>
+      </div>
+
+      {/* --- Provenance & telemetry: a spec sheet, not a stack ------------ */}
       <Section
         id="provenance"
         surface="raised"
         label="PROVENANCE & TELEMETRY"
         title="Every answer records what produced it and what it cost."
-        lede="Which models were asked, which answered, which disagreed, measured response latency, provider-reported token counts, and estimated cost. Everything belongs to the turn, so an answer read months later reports the exact telemetry recorded when it ran."
+        lede="Which models were asked, which answered, which disagreed, measured time to first token and total latency, provider-reported token counts, and an estimated cost. It belongs to the turn, so an answer read months later reports what was recorded when it ran."
       >
-        <UsedModels />
-
-        <div className="mt-16">
-          <h3 className="text-title font-[550] text-ink">
-            Transparent performance and verified cost estimation.
-          </h3>
-          <p className="mt-2 max-w-[62ch] text-ui text-ink-2">
-            Every turn exposes time to first token, total completion latency, and actual
-            provider-reported input and output token counts. Cost estimates are calculated only when
-            both provider token usage and a verified USD pricing rate are present; missing telemetry
-            is shown honestly as Not available or Unknown.
-          </p>
-          <div className="mt-8">
+        <div className="grid gap-px border border-line bg-line lg:grid-cols-2">
+          <SpecCell
+            title="Measured, or marked missing."
+            body="Cost is estimated only when a provider reported token usage and a dated list price is on file. Anything absent says Not available or Unknown — never a zero."
+            wide
+          >
             <PerformanceTransparency />
-          </div>
-        </div>
-
-        <div className="mt-16">
-          <h3 className="text-title font-[550] text-ink">
-            The same record, drawn beside the answer.
-          </h3>
-          <p className="mt-2 max-w-[62ch] text-ui text-ink-2">
-            A two-pixel rail runs down the left margin, one segment per model in the order they
-            were planned. Position identifies the model, a break means it diverged from the
-            synthesis, and a hollow segment means it never answered.
-          </p>
-          <div className="mt-8">
+          </SpecCell>
+          <SpecCell
+            title="Which models ran, in order."
+            body="Provenance is a record of what happened, including the models that failed."
+          >
+            <UsedModels />
+          </SpecCell>
+          <SpecCell
+            title="The same record, beside the answer."
+            body="A two-pixel rail, one segment per model in plan order. A break means it diverged; a hollow segment means it never answered."
+          >
             <RailLegend />
-          </div>
-        </div>
-
-        <div className="mt-16">
-          <h3 className="text-title font-[550] text-ink">Failure is recorded, not absorbed.</h3>
-          <p className="mt-2 max-w-[62ch] text-ui text-ink-2">
-            Providers go down, rate-limit and time out. If the model writing the answer fails
-            before any text has streamed, the orchestrator moves to the next eligible one — and
-            once text has reached you it deliberately does not switch, because rewriting an
-            answer you are already reading would be worse than the failure. The eligible set is
-            finite: when it is exhausted the turn fails and says so.
-          </p>
-          <div className="mt-8">
+          </SpecCell>
+          <SpecCell
+            title="Failure is recorded, not absorbed."
+            body="If the model writing the answer fails before any text has streamed, the next eligible one takes over. Once text has reached you it does not switch — rewriting an answer you are reading would be worse than the failure."
+            wide
+          >
             <FailoverDiagram />
-          </div>
+          </SpecCell>
         </div>
       </Section>
 
-      {/* --- 07 · Product preview ------------------------------------------ */}
+      {/* --- Models ------------------------------------------------------- */}
       <Section
-        id="product"
-        label="THE WORKSPACE"
-        title="The answer, the Arena, and the working behind it."
-        lede="In Model Arena mode, responses sit side by side so you can compare, choose a preferred answer for follow-up context, or combine them on demand. In Synthesis mode, the reconciled prose sits beside its provenance rail."
+        id="models"
+        layout="split"
+        label="THE MODELS"
+        title="Six models across six providers."
+        lede="Any one of them can answer on its own, be compared side by side in the Model Arena, or contribute to synthesis. The selector lists every model the deployment knows about, available or not."
       >
-        <div className="mb-14">
-          <h3 className="mb-3 text-title font-[550] text-ink">
-            Model Arena — compare independent answers, choose, or combine.
-          </h3>
-          <p className="mb-6 max-w-[62ch] text-ui text-ink-2">
-            Select a preferred response below to see how Model Arena locks follow-up context to the
-            chosen model, or click Combine answers to inspect the on-demand synthesis.
-          </p>
-          <ModelArenaPreview />
-        </div>
-
-        <div>
-          <h3 className="mb-3 text-title font-[550] text-ink">
-            Synthesised turn — reconciled prose with per-model provenance.
-          </h3>
-          <p className="mb-6 max-w-[62ch] text-ui text-ink-2">
-            When you ask in Synthesis mode, the reconciled answer is typeset directly on the canvas
-            with the two-pixel provenance rail beside it and expandable comparison panels below.
-          </p>
-          <ProductPreview />
-        </div>
+        <ModelRoster />
       </Section>
 
-      {/* --- 08 · CTA ------------------------------------------------------ */}
+      {/* --- CTA ---------------------------------------------------------- */}
       <section className="border-t border-line-subtle bg-canvas">
         <MarketingContainer>
-          <div className="py-16 md:py-20">
-            <Rule label="GET STARTED" className="mb-8" />
-            <h2 className="max-w-[20ch] text-section font-[550] text-ink md:text-display">
-              Ask one question. Choose who answers it.
-            </h2>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="grid gap-8 py-16 md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:py-24">
+            <div>
+              <Rule label="GET STARTED" className="mb-8" />
+              <h2 className="max-w-[20ch] text-section font-[550] text-ink md:text-display">
+                Ask one question. Choose who answers it.
+              </h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
               <CtaLink to={routes.register}>Try NexusAI</CtaLink>
               <CtaLink to={routes.login} variant="secondary">
                 Sign in
@@ -294,6 +277,29 @@ export function HomePage() {
         </MarketingContainer>
       </section>
     </MarketingLayout>
+  );
+}
+
+/** One cell of the telemetry spec sheet: a claim, then its illustration. */
+function SpecCell({
+  title,
+  body,
+  wide = false,
+  children,
+}: {
+  title: string;
+  body: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={clsx('flex flex-col gap-5 bg-workspace p-5 md:p-7', wide && 'lg:col-span-2')}>
+      <div>
+        <h3 className="text-title font-[550] text-ink">{title}</h3>
+        <p className="mt-1.5 max-w-[60ch] text-ui text-ink-2">{body}</p>
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
   );
 }
 

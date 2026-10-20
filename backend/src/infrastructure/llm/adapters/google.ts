@@ -1,4 +1,9 @@
-import type { ProviderAdapter, GenerationRequest, GenerationResult } from '../adapter.ts';
+import type {
+  ProviderAdapter,
+  GenerationRequest,
+  GenerationResult,
+  StreamUsage,
+} from '../adapter.ts';
 import { classifyProviderError, classifyTransportError } from '../errors.ts';
 import { readUpstreamSSE } from '../sse-parse.ts';
 import { Errors } from '../../../domain/errors.ts';
@@ -39,12 +44,16 @@ export class GoogleAdapter implements ProviderAdapter {
     return {
       text: extractText(json),
       inputTokens: json.usageMetadata?.promptTokenCount ?? null,
-      outputTokens: json.usageMetadata?.candidatesTokenCount ?? null,
+      outputTokens: billedOutputTokens(json.usageMetadata),
       finishReason: json.candidates?.[0]?.finishReason ?? null,
     };
   }
 
-  async *stream(request: GenerationRequest, signal: AbortSignal): AsyncIterable<string> {
+  async *stream(
+    request: GenerationRequest,
+    signal: AbortSignal,
+    usage?: StreamUsage,
+  ): AsyncIterable<string> {
     const response = await this.post(request, signal, true);
     if (!response.body) return;
 
@@ -54,6 +63,31 @@ export class GoogleAdapter implements ProviderAdapter {
         parsed = JSON.parse(payload);
       } catch {
         continue;
+      }
+      // A failure after the 200 arrives in-band as an `error` object carrying
+      // the HTTP code it stands for. Ignoring it recorded a truncated answer
+      // as complete.
+      if (parsed.error) {
+        const code = typeof parsed.error.code === 'number' ? parsed.error.code : 500;
+        throw classifyProviderError(code, payload, {
+          provider: this.provider,
+          modelId: request.model.id,
+          inStream: true,
+        });
+      }
+      // A safety block can arrive in-band on a 200 stream, exactly as it does
+      // on `generate`. Without this it read as an empty answer.
+      if (parsed.promptFeedback?.blockReason) {
+        throw Errors.contentPolicy({
+          provider: this.provider,
+          modelId: request.model.id,
+          blockReason: parsed.promptFeedback.blockReason,
+        });
+      }
+      // Cumulative on every chunk; the last one carries the totals.
+      if (usage && parsed.usageMetadata) {
+        usage.inputTokens = parsed.usageMetadata.promptTokenCount ?? usage.inputTokens;
+        usage.outputTokens = billedOutputTokens(parsed.usageMetadata) ?? usage.outputTokens;
       }
       const text = extractText(parsed);
       if (text) yield text;
@@ -117,7 +151,24 @@ export class GoogleAdapter implements ProviderAdapter {
 interface GeminiResponse {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
   promptFeedback?: { blockReason?: string };
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  usageMetadata?: GeminiUsage;
+  error?: { code?: number; status?: string; message?: string };
+}
+
+interface GeminiUsage {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+}
+
+/**
+ * Output as billed. 2.5-series models think by default, and thinking tokens are
+ * charged at the output rate but reported separately from the candidates —
+ * reading only `candidatesTokenCount` under-reported the cost of every turn.
+ */
+function billedOutputTokens(usage: GeminiUsage | undefined): number | null {
+  if (!usage || usage.candidatesTokenCount === undefined) return null;
+  return usage.candidatesTokenCount + (usage.thoughtsTokenCount ?? 0);
 }
 
 function extractText(json: GeminiResponse): string {

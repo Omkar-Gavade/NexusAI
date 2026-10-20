@@ -149,7 +149,7 @@ export function ResponseModes() {
           {/* A failure in the illustration, not a tidy three-of-three. A model
               that does not answer is the ordinary case, and the count below
               reports what actually ran rather than what was asked for. */}
-          <ModelRow name="Mistral Large" outcome="failed" />
+          <ModelRow name="Mistral Medium" outcome="failed" />
         </ul>
         <Result value={`${agreementSentence(ILLUSTRATED)} · SYNTHESISED`} />
       </Mode>

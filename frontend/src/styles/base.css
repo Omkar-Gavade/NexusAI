@@ -377,6 +377,58 @@
   }
 }
 
+/*
+ * Workspace micro-motion. Each states what changed, and none runs longer than
+ * the 220ms ceiling or loops.
+ */
+
+/* A context row (Arena line-up, follow-up banner) entering the composer. */
+@keyframes nx-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A model joining the Arena line-up: its position number lands. */
+@keyframes nx-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* An Arena panel taking its place in the grid, staggered by position. */
+@keyframes nx-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Choosing an answer: one ring that settles, so the choice is acknowledged
+   without the panel itself moving. */
+@keyframes nx-select {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent);
+  }
+}
+
 /* Scroll-linked reveal, driven by IntersectionObserver in `reveal.tsx`. */
 .nx-reveal {
   opacity: 0;

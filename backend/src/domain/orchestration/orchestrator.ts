@@ -16,7 +16,8 @@ import type { Config } from '../../config/env.ts';
 import type { Logger } from '../../infrastructure/observability/logger.ts';
 import type { ConversationRepository } from '../../infrastructure/repositories/conversation-repository.ts';
 import type { MessageRepository } from '../../infrastructure/repositories/message-repository.ts';
-import type { ModelResponseDoc } from '../../infrastructure/repositories/types.ts';
+import type { MessageDoc, ModelResponseDoc } from '../../infrastructure/repositories/types.ts';
+import { emptyUsage, type StreamUsage } from '../../infrastructure/llm/adapter.ts';
 import { toWireMessage } from '../../application/conversation-service.ts';
 import { AppError, Errors, isAppError } from '../errors.ts';
 import type { ModelDefinition } from '../models/catalog.ts';
@@ -193,7 +194,6 @@ export class ChatOrchestrator {
     // --- Model fan-out ------------------------------------------------------
     const attempts = new Map<string, ModelAttempt>();
     const pending: Array<Promise<void>> = [];
-    let firstModelCompleteMs: number | null = null;
 
     for (const model of plan) yield { type: 'model_start', modelId: model.id };
 
@@ -218,10 +218,38 @@ export class ChatOrchestrator {
     const workers = Math.min(config.MAX_CONCURRENT_MODEL_CALLS, plan.length);
     const channel = new EventChannel();
 
+    /*
+     * Where a model's text goes while it is still being written.
+     *
+     * One model is the whole answer, so its text reaches the reader as it
+     * arrives rather than after the last token — previously a single-model turn
+     * showed nothing until the provider had finished. In the Arena each panel
+     * fills the same way. Only a synthesis fan-out keeps per-model text on the
+     * server, because the reader is shown the reconciled answer instead.
+     *
+     * `turnFirstTokenMs` is when the reader first saw answer text: measured at
+     * the first forwarded chunk, never inferred from a completion time.
+     */
+    const directStream = turnMode !== 'compare' && plan.length === 1;
+    let turnFirstTokenMs: number | null = null;
+    const forwardTo = (model: ModelDefinition) => (chunk: string) => {
+      turnFirstTokenMs ??= Date.now() - startedAt;
+      channel.push(
+        turnMode === 'compare'
+          ? { type: 'arena_delta', modelId: model.id, text: chunk }
+          : { type: 'delta', text: chunk },
+      );
+    };
+
     const runOne = async (model: ModelDefinition): Promise<void> => {
-      const attempt = await this.callModel(model, request.message, history, signal);
+      const attempt = await this.callModel(
+        model,
+        request.message,
+        history,
+        signal,
+        turnMode === 'compare' || directStream ? forwardTo(model) : undefined,
+      );
       attempts.set(model.id, attempt);
-      firstModelCompleteMs ??= Date.now() - startedAt;
 
       // Per-model timing, on the model's own completion rather than the turn's.
       // Ids only: prompts and responses never reach the log.
@@ -236,14 +264,6 @@ export class ChatOrchestrator {
         },
         'model call finished',
       );
-
-      if (turnMode === 'compare' && attempt.outcome === 'complete' && attempt.text) {
-        channel.push({
-          type: 'arena_delta',
-          modelId: model.id,
-          text: attempt.text,
-        });
-      }
 
       channel.push(
         attempt.outcome === 'complete' || attempt.outcome === 'empty'
@@ -302,6 +322,10 @@ export class ChatOrchestrator {
     await fanout;
     if (fanoutError) throw fanoutError;
 
+    // What the reader had already been shown when a direct answer is stopped.
+    const directModel = directStream ? plan[0] : undefined;
+    const directText = directModel ? (attempts.get(directModel.id)?.text ?? '') : '';
+
     if (signal.aborted) {
       yield* this.finaliseCancelled(
         assistantId,
@@ -309,9 +333,10 @@ export class ChatOrchestrator {
         attempts,
         plan,
         startedAt,
-        '',
+        directText,
         turnMode,
         routingDecision,
+        turnFirstTokenMs,
       );
       return;
     }
@@ -323,9 +348,11 @@ export class ChatOrchestrator {
       .map((a) => ({ model: a.model, text: a.text }));
 
     if (contributions.length === 0) {
+      // A direct answer that broke off mid-stream keeps what the reader saw.
+      const partial = directText.trim() ? directText : '';
       await this.persist(assistantId, conversationId, {
-        content: '',
-        status: 'failed',
+        content: partial,
+        status: partial ? 'failed_partial' : 'failed',
         mode: turnMode,
         routingDecision,
         attempts,
@@ -333,7 +360,7 @@ export class ChatOrchestrator {
         stances: {},
         synthesisModel: null,
         startedAt,
-        firstTokenMs: null,
+        firstTokenMs: turnFirstTokenMs,
       });
       /*
        * Not a synthesis failure — synthesis never ran. `SYNTHESIS_FAILED`
@@ -374,7 +401,7 @@ export class ChatOrchestrator {
         stances: {},
         synthesisModel: null,
         startedAt,
-        firstTokenMs: firstModelCompleteMs ?? elapsed,
+        firstTokenMs: turnFirstTokenMs,
       });
 
       logger.info(
@@ -394,7 +421,7 @@ export class ChatOrchestrator {
         type: 'complete',
         messageId: assistantId.toHexString(),
         latencyMs: elapsed,
-        firstTokenMs: firstModelCompleteMs ?? elapsed,
+        firstTokenMs: turnFirstTokenMs,
       };
       return;
     }
@@ -449,6 +476,7 @@ export class ChatOrchestrator {
         contributions.length === 1 ? 'single response' : 'no synthesist available',
         turnMode,
         routingDecision,
+        directStream ? turnFirstTokenMs : undefined,
       );
       return;
     }
@@ -458,10 +486,12 @@ export class ChatOrchestrator {
     let verdictsSent = false;
     let stances: Record<string, Stance> = {};
     let firstTokenMs: number | null = null;
+    let synthesisUsage = emptyUsage();
 
     for (;;) {
     yield { type: 'synthesis_start', model: registry.ref(synthesist) };
     ineligible.push(synthesist.id);
+    synthesisUsage = emptyUsage();
 
     const adapter = registry.adapterFor(synthesist);
     if (!adapter) throw Errors.noModelAvailable();
@@ -487,6 +517,7 @@ export class ChatOrchestrator {
           temperature: 0.3,
         },
         synthesisSignal,
+        synthesisUsage,
       );
 
       for await (const chunk of stream) {
@@ -593,6 +624,7 @@ export class ChatOrchestrator {
         plan,
         stances,
         synthesisModel: synthesist,
+        synthesisUsage,
         startedAt,
         firstTokenMs,
       });
@@ -612,6 +644,7 @@ export class ChatOrchestrator {
         emitted,
         turnMode,
         routingDecision,
+        firstTokenMs,
       );
       return;
     }
@@ -645,6 +678,7 @@ export class ChatOrchestrator {
         plan,
         stances,
         synthesisModel: synthesist,
+        synthesisUsage,
         startedAt,
         firstTokenMs,
       });
@@ -660,6 +694,7 @@ export class ChatOrchestrator {
       plan,
       stances,
       synthesisModel: synthesist,
+      synthesisUsage,
       startedAt,
       firstTokenMs,
     });
@@ -841,9 +876,13 @@ export class ChatOrchestrator {
 
     const userMsg = await messages.findPrecedingUserMessage(conversationId, doc._id, doc.createdAt);
     const question = userMsg?.content ?? '';
-    if (!question) throw Errors.notFound();
+    if (!userMsg || !question) throw Errors.notFound();
 
-    const attempt = await this.callModel(model, question, [], signal);
+    // The conversation as it stood when this turn was asked. Retrying with no
+    // history answered a follow-up as if it were the first message — "what
+    // about the second one?" with nothing for "the second one" to refer to.
+    const history = await this.buildHistory(conversationId, userMsg._id);
+    const attempt = await this.callModel(model, question, history, signal);
     const newResponseDoc: ModelResponseDoc = {
       model: registry.ref(model),
       text: attempt.text,
@@ -857,9 +896,9 @@ export class ChatOrchestrator {
       errorCode: attempt.errorCode,
     };
 
-    const updatedResponses = doc.responses.map((r) =>
-      r.model.modelId === modelId ? newResponseDoc : r,
-    );
+    const fresh: MessageDoc | null = await messages.replaceResponse(doc._id, modelId, newResponseDoc);
+    if (!fresh) throw Errors.notFound();
+    const updatedResponses = fresh.responses;
     const summary: OutcomeSummary[] = updatedResponses.map((r) => ({
       modelId: r.model.modelId,
       responded: r.outcome === 'complete' && Boolean(r.text.trim()),
@@ -869,32 +908,27 @@ export class ChatOrchestrator {
     const anyComplete = updatedResponses.some(
       (r) => r.outcome === 'complete' && Boolean(r.text.trim()),
     );
-    const status: MessageStatus = anyComplete ? 'complete' : doc.status;
+    const status: MessageStatus = anyComplete ? 'complete' : fresh.status;
 
-    const knownCosts = updatedResponses
-      .map((r) => r.estimatedCostUsd ?? null)
-      .filter((c): c is number => c !== null);
-    const metadata = doc.metadata
+    // A retry is spend on top of the original turn, not a replacement for it:
+    // the first call was billed whether or not it answered. The turn's totals
+    // therefore accumulate, and still only from provider-reported numbers.
+    const metadata = fresh.metadata
       ? {
-          ...doc.metadata,
-          inputTokens: sum(updatedResponses.map((r) => r.inputTokens)),
-          outputTokens: sum(updatedResponses.map((r) => r.outputTokens)),
-          estimatedCostUsd:
-            knownCosts.length > 0
-              ? Number(knownCosts.reduce((a, b) => a + b, 0).toFixed(8))
-              : null,
+          ...fresh.metadata,
+          inputTokens: sum([fresh.metadata.inputTokens, attempt.inputTokens]),
+          outputTokens: sum([fresh.metadata.outputTokens, attempt.outputTokens]),
+          estimatedCostUsd: roundCost(
+            sum([fresh.metadata.estimatedCostUsd ?? null, attempt.estimatedCostUsd]),
+          ),
         }
       : null;
 
-    await messages.finalise(doc._id, {
-      status,
-      responses: updatedResponses,
-      agreement,
-      metadata,
-    });
+    // Derived fields only; the response itself was written atomically above.
+    await messages.finalise(doc._id, { status, agreement, metadata });
 
     return toWireMessage({
-      ...doc,
+      ...fresh,
       status,
       responses: updatedResponses,
       agreement,
@@ -929,8 +963,14 @@ export class ChatOrchestrator {
     reason: string,
     mode: 'auto' | 'manual' | 'compare' = 'auto',
     routingDecision: RoutingDecision | null = null,
+    /**
+     * Set when the answer already streamed to the reader as the model wrote
+     * it: the text is not sent again, and this is when it first appeared.
+     */
+    streamedFirstTokenMs?: number | null,
   ): AsyncGenerator<ChatEvent> {
     const { logger } = this.deps;
+    const streamed = streamedFirstTokenMs !== undefined;
     // `contributions` is in plan order, so this is the highest-ranked model
     // that answered. No new ranking is introduced.
     const [best] = contributions;
@@ -952,7 +992,9 @@ export class ChatOrchestrator {
       agreement: computeAgreement(this.summarise(plan, attempts, {})),
       stances: this.fullStances(plan, attempts, {}),
     };
-    yield { type: 'delta', text: best.text };
+    // Delivered in one piece here, so this is the moment it first appears.
+    const firstTokenMs = streamed ? streamedFirstTokenMs : Date.now() - startedAt;
+    if (!streamed) yield { type: 'delta', text: best.text };
     yield { type: 'sources', sources: [] };
 
     const elapsed = Date.now() - startedAt;
@@ -966,14 +1008,14 @@ export class ChatOrchestrator {
       stances: {},
       synthesisModel: null,
       startedAt,
-      firstTokenMs: elapsed,
+      firstTokenMs,
     });
 
     yield {
       type: 'complete',
       messageId: assistantId.toHexString(),
       latencyMs: elapsed,
-      firstTokenMs: elapsed,
+      firstTokenMs,
     };
   }
 
@@ -1008,15 +1050,22 @@ export class ChatOrchestrator {
     }
 
     if (request.selection.mode === 'compare') {
-      const uniqueIds = [...new Set(request.selection.modelIds)].slice(
-        0,
-        config.MAX_MODELS_PER_REQUEST,
-      );
+      // The contract already guarantees 2–4 distinct ids. A deployment cap
+      // below that is reported, never applied by quietly dropping models.
+      const uniqueIds = [...new Set(request.selection.modelIds)];
       if (uniqueIds.length < 2) {
         throw Errors.validation([
           {
             path: 'selection.modelIds',
             message: 'Select at least two distinct models to compare',
+          },
+        ]);
+      }
+      if (uniqueIds.length > config.MAX_MODELS_PER_REQUEST) {
+        throw Errors.validation([
+          {
+            path: 'selection.modelIds',
+            message: `This server compares at most ${config.MAX_MODELS_PER_REQUEST} models at once`,
           },
         ]);
       }
@@ -1066,9 +1115,14 @@ export class ChatOrchestrator {
 
   private async buildHistory(
     conversationId: string,
+    beforeId?: ObjectId,
   ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
     const { config, messages } = this.deps;
-    const rows = await messages.recentForContext(conversationId, config.MAX_HISTORY_MESSAGES);
+    const rows = await messages.recentForContext(
+      conversationId,
+      config.MAX_HISTORY_MESSAGES,
+      beforeId,
+    );
 
     // Bounded by characters as well as count: twenty long turns can still blow
     // past a context window.
@@ -1110,6 +1164,8 @@ export class ChatOrchestrator {
     question: string,
     history: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>,
     signal: AbortSignal,
+    /** Receives each chunk as it arrives, for callers that show it live. */
+    onChunk?: (chunk: string) => void,
   ): Promise<ModelAttempt> {
     const { config, registry } = this.deps;
     const startedAt = Date.now();
@@ -1141,32 +1197,44 @@ export class ChatOrchestrator {
     const timeout = AbortSignal.timeout(config.MODEL_TIMEOUT_MS);
     const combined = AbortSignal.any([signal, timeout]);
 
+    // Streamed even when nobody watches the text, because that is the only way
+    // to measure time to first token. Usage comes from the provider's own
+    // stream frames; it stays null when a provider does not report it.
+    const usage = emptyUsage();
+    let text = '';
+    let firstTokenMs: number | null = null;
+
     try {
-      const result = await adapter.generate(
+      for await (const chunk of adapter.stream(
         {
           model,
           messages: [...history, { role: 'user', content: question }],
           maxOutputTokens: model.maxOutputTokens,
         },
         combined,
-      );
+        usage,
+      )) {
+        if (!chunk) continue;
+        firstTokenMs ??= Date.now() - startedAt;
+        text += chunk;
+        onChunk?.(chunk);
+      }
 
       registry.health.recordSuccess(model.provider);
-      const latencyMs = Date.now() - startedAt;
       const { estimatedCostUsd } = estimateModelCost(
         model.id,
-        result.inputTokens,
-        result.outputTokens,
+        usage.inputTokens,
+        usage.outputTokens,
       );
 
       return {
         ...base,
-        text: result.text,
-        outcome: result.text.trim() ? 'complete' : 'empty',
-        latencyMs,
-        firstTokenMs: null,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
+        text,
+        outcome: text.trim() ? 'complete' : 'empty',
+        latencyMs: Date.now() - startedAt,
+        firstTokenMs,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
         estimatedCostUsd,
       };
     } catch (error) {
@@ -1190,10 +1258,18 @@ export class ChatOrchestrator {
         authCause: authCauseOf(failure.context),
       });
 
+      // Text that already streamed is kept: the reader may have seen it, and
+      // it is labelled by the outcome rather than discarded.
       return {
         ...base,
+        text,
         outcome: cancelled ? 'cancelled' : 'failed',
         latencyMs: Date.now() - startedAt,
+        firstTokenMs,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        estimatedCostUsd: estimateModelCost(model.id, usage.inputTokens, usage.outputTokens)
+          .estimatedCostUsd,
         errorCode: failure.code,
       };
     }
@@ -1235,6 +1311,7 @@ export class ChatOrchestrator {
     partial = '',
     mode: 'auto' | 'manual' | 'compare' = 'auto',
     routingDecision: RoutingDecision | null = null,
+    firstTokenMs: number | null = null,
   ): AsyncGenerator<ChatEvent> {
     await this.persist(assistantId, conversationId, {
       content: partial,
@@ -1246,7 +1323,7 @@ export class ChatOrchestrator {
       stances: {},
       synthesisModel: null,
       startedAt,
-      firstTokenMs: null,
+      firstTokenMs,
     });
 
     // Best effort: the socket is usually already gone. The client marks the
@@ -1270,6 +1347,8 @@ export class ChatOrchestrator {
       plan: readonly ModelDefinition[];
       stances: Record<string, Stance>;
       synthesisModel: ModelDefinition | null;
+      /** Provider-reported usage of the synthesis pass, when it ran. */
+      synthesisUsage?: StreamUsage;
       startedAt: number;
       firstTokenMs: number | null;
     },
@@ -1295,9 +1374,21 @@ export class ChatOrchestrator {
       };
     });
 
-    const knownCosts = responses
-      .map((r) => r.estimatedCostUsd ?? null)
-      .filter((c): c is number => c !== null);
+    // The synthesis pass is billed like any other call, so the turn's usage and
+    // cost include it whenever the provider reported it. Still only measured
+    // numbers: an unreported synthesis adds nothing rather than a guess.
+    const synthesis =
+      input.synthesisModel && input.synthesisUsage
+        ? { modelId: input.synthesisModel.id, ...input.synthesisUsage }
+        : null;
+    const synthesisCost = synthesis
+      ? estimateModelCost(synthesis.modelId, synthesis.inputTokens, synthesis.outputTokens)
+          .estimatedCostUsd
+      : null;
+
+    const knownCosts = [...responses.map((r) => r.estimatedCostUsd ?? null), synthesisCost].filter(
+      (c): c is number => c !== null,
+    );
     const estimatedCostUsd =
       knownCosts.length > 0
         ? Number(knownCosts.reduce((a, b) => a + b, 0).toFixed(8))
@@ -1315,14 +1406,15 @@ export class ChatOrchestrator {
       metadata: {
         latencyMs: Date.now() - input.startedAt,
         firstTokenMs: input.firstTokenMs,
-        // Fan-out only. The synthesis pass streams, and the streaming path does
-        // not read usage, so its tokens are not included — which means this
-        // under-reports the turn rather than over-reports it. It stays an
-        // undercount rather than becoming an estimate: a guessed number
-        // presented as measured usage is the failure this product exists to
-        // avoid. `null` throughout when no provider reported anything.
-        inputTokens: sum(responses.map((r) => r.inputTokens)),
-        outputTokens: sum(responses.map((r) => r.outputTokens)),
+        // Fan-out plus synthesis, as reported by the providers. Never filled
+        // in by estimation: a guessed number presented as measured usage is
+        // the failure this product exists to avoid. `null` throughout when no
+        // provider reported anything.
+        inputTokens: sum([...responses.map((r) => r.inputTokens), synthesis?.inputTokens ?? null]),
+        outputTokens: sum([
+          ...responses.map((r) => r.outputTokens),
+          synthesis?.outputTokens ?? null,
+        ]),
         estimatedCostUsd,
       },
     });
@@ -1353,6 +1445,10 @@ function verdictBlockRuledOut(raw: string): boolean {
 
 /** Generous ceiling for `<verdicts>…</verdicts>`: a handful of short lines. */
 const VERDICT_BLOCK_LIMIT = 600;
+
+function roundCost(value: number | null): number | null {
+  return value === null ? null : Number(value.toFixed(8));
+}
 
 function sum(values: ReadonlyArray<number | null>): number | null {
   const known = values.filter((v): v is number => v !== null);

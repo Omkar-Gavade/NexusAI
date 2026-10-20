@@ -57,8 +57,8 @@ describe('server-side request limits', () => {
       .find((event) => event.type === 'start');
 
     expect(start.plan.length).toBeLessThanOrEqual(h.config.MAX_MODELS_PER_REQUEST);
-    // Only three test models exist, so `thorough` cannot exceed them either.
-    expect(start.plan.length).toBe(3);
+    // Four test models exist, so `thorough` (five) is bounded by them too.
+    expect(start.plan.length).toBe(4);
     expect(start.plan.map((m: { modelId: string }) => m.modelId)).not.toContain('model-0');
   }, 30_000);
 

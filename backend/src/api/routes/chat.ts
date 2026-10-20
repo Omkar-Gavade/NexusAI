@@ -6,6 +6,7 @@ import { requireUser } from '../middleware/authenticate.ts';
 import { createRateLimit, RULES, type RateLimiter } from '../middleware/rate-limit.ts';
 import { toAppError } from '../errors/error-handler.ts';
 import { SseWriter } from '../sse.ts';
+import { clientDisconnectSignal } from '../disconnect.ts';
 import { Errors } from '../../domain/errors.ts';
 
 const MessageParams = z.object({
@@ -47,8 +48,7 @@ export function registerChatRoutes(
       // The client's fetch abort is the cancellation signal. There is no cancel
       // endpoint and the client will never call one, so socket close is the
       // only thing that stops the work.
-      const controller = new AbortController();
-      request.raw.on('close', () => controller.abort());
+      const signal = clientDisconnectSignal(request, reply);
 
       const sse = new SseWriter(reply);
       let opened = false;
@@ -63,7 +63,7 @@ export function registerChatRoutes(
             selection: body.selection,
             requestId: request.id,
           },
-          controller.signal,
+          signal,
         )) {
           // Headers are committed lazily: until the first event, a failure can
           // still be a normal 4xx with the JSON envelope, which is far easier
@@ -115,14 +115,13 @@ export function registerChatRoutes(
       const { id, messageId } = MessageParams.parse(request.params);
       const body = SynthesizeMessageRequest.parse(request.body ?? {});
 
-      const controller = new AbortController();
-      request.raw.on('close', () => controller.abort());
+      const signal = clientDisconnectSignal(request, reply);
 
       const updated = await deps.orchestrator.synthesizeMessage(
         user.id,
         id,
         messageId,
-        controller.signal,
+        signal,
         body.modelIds,
       );
       return reply.send(updated);
@@ -137,15 +136,14 @@ export function registerChatRoutes(
       const { id, messageId } = MessageParams.parse(request.params);
       const { modelId } = RetryModelBody.parse(request.body);
 
-      const controller = new AbortController();
-      request.raw.on('close', () => controller.abort());
+      const signal = clientDisconnectSignal(request, reply);
 
       const updated = await deps.orchestrator.retryModel(
         user.id,
         id,
         messageId,
         modelId,
-        controller.signal,
+        signal,
       );
       return reply.send(updated);
     },

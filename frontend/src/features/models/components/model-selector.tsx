@@ -12,10 +12,10 @@ import { useModels } from '../use-models';
  * several models and reconcile them and one does not — which is the single
  * thing a reader needs in order to choose.
  */
-const ROUTING: ReadonlyArray<{ mode: RoutingMode; label: string; note: string }> = [
-  { mode: 'single', label: 'Single model', note: 'one model · fastest' },
-  { mode: 'balanced', label: 'Synthesis · 3 models', note: 'three models · reconciled' },
-  { mode: 'thorough', label: 'Synthesis · 5 models', note: 'five models · reconciled' },
+const ROUTING: ReadonlyArray<{ mode: RoutingMode; label: string; short: string; note: string }> = [
+  { mode: 'single', label: 'Single model', short: 'Single', note: 'one model · fastest' },
+  { mode: 'balanced', label: 'Synthesis · 3 models', short: 'Synth · 3', note: 'three models · reconciled' },
+  { mode: 'thorough', label: 'Synthesis · 5 models', short: 'Synth · 5', note: 'five models · reconciled' },
 ];
 
 type Option =
@@ -83,6 +83,12 @@ export function ModelSelector({
       : selection.mode === 'compare'
         ? `Arena · ${selection.modelIds.length} models`
         : (ROUTING.find((r) => r.mode === selection.routing)?.label ?? 'Auto');
+
+  // A phone's toolbar has room for a word, not a phrase.
+  const shortLabel =
+    selection.mode === 'auto'
+      ? (ROUTING.find((r) => r.mode === selection.routing)?.short ?? label)
+      : label;
 
   const commit = (option: Option) => {
     if (option.kind === 'routing') onChange({ mode: 'auto', routing: option.mode });
@@ -165,7 +171,7 @@ export function ModelSelector({
   }, [open]);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <button
         ref={triggerRef}
         type="button"
@@ -181,11 +187,12 @@ export function ModelSelector({
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onKeyDown}
         className={clsx(
-          'inline-flex h-(--control-sm) items-center gap-1 rounded-control px-2 text-ui text-ink-2',
+          'inline-flex h-(--control-sm) max-w-full items-center gap-1 rounded-control px-2 text-ui text-ink-2',
           'transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink',
         )}
       >
-        <span className="max-w-[180px] truncate">{label}</span>
+        <span className="min-w-0 max-w-[180px] truncate max-sm:hidden">{label}</span>
+        <span className="min-w-0 truncate sm:hidden">{shortLabel}</span>
         <ChevronDown size={13} aria-hidden="true" className="shrink-0 text-ink-3" />
       </button>
 

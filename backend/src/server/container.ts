@@ -56,7 +56,9 @@ export async function buildContainer(input: {
   adapters.set('anthropic', new AnthropicAdapter(config.ANTHROPIC_API_KEY));
   adapters.set('google', new GoogleAdapter(config.GEMINI_API_KEY));
 
-  const testAdapter = config.TEST_PROVIDER_ENABLED ? new TestAdapter() : null;
+  const testAdapter = config.TEST_PROVIDER_ENABLED
+    ? new TestAdapter(config.TEST_PROVIDER_CHUNK_DELAY_MS, config.TEST_PROVIDER_FIRST_CHUNK_DELAY_MS)
+    : null;
   if (testAdapter) adapters.set('test', testAdapter);
 
   const registry = new ModelRegistry(config, adapters);

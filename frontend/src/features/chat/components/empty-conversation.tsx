@@ -36,32 +36,56 @@ const EXAMPLES = [
   'Check an answer from more than one angle',
 ] as const;
 
+/*
+ * The four ways a question can travel, stated once, as a key rather than a
+ * pitch. Machine register on the left because these are the names the
+ * composer and every answer's routing line use.
+ */
+const MODES = [
+  ['Smart route', 'the router picks a model for the task'],
+  ['One model', 'that model answers alone, unedited'],
+  ['Synthesis', 'several models, one reconciled answer'],
+  ['Arena', 'two to four answers side by side'],
+] as const;
+
 export function EmptyConversation({ disabled }: { disabled: boolean }) {
   return (
-    <div className="flex min-h-[46vh] flex-col justify-end pb-2">
-      <Logo size={22} className="mb-4 text-ink-3" aria-hidden="true" />
+    <div className="flex min-h-[46vh] flex-col justify-end pb-4 motion-safe:animate-[nx-answer-in_220ms_var(--ease-out)]">
+      <Logo size={22} className="mb-5 text-accent" aria-hidden="true" />
 
-      <h2 className="text-section font-[550] tracking-[-0.01em] text-ink">Ask anything.</h2>
+      <h2 className="text-display font-[550] text-ink">Ask anything.</h2>
 
       {/*
-        Both modes, because the composer offers both. Saying only "several
-        models" described the product as it behaves in synthesis mode and
-        misdescribed it the moment a reader picked a single model from the
-        selector — the answer then comes from that model alone.
+        Every mode, because the composer offers every mode. Saying only
+        "several models" misdescribed the product the moment a reader picked a
+        single model — or compared answers in the Arena.
       */}
-      <p className="mt-2 max-w-[52ch] text-body text-ink-2">
-        Choose a model for a direct answer, or use Synthesis to put the question to several and
-        read one reconciled answer.
+      <p className="mt-2 max-w-[56ch] text-body text-ink-2">
+        Choose a model for a direct answer, let Smart Routing pick one, or put the question to
+        several — reconciled into one synthesis, or compared side by side.
       </p>
 
       {!disabled && (
-        <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2">
-          {EXAMPLES.map((example) => (
-            <li key={example} data-register="machine" className="text-meta text-ink-3">
-              {example}
-            </li>
-          ))}
-        </ul>
+        <>
+          <dl className="mt-7 grid max-w-[56ch] grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 border-t border-line-subtle pt-4">
+            {MODES.map(([name, what]) => (
+              <div key={name} className="contents">
+                <dt data-register="machine" className="text-note uppercase leading-5 text-ink-2">
+                  {name}
+                </dt>
+                <dd className="text-ui text-ink-3">{what}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2" aria-label="Kinds of question">
+            {EXAMPLES.map((example) => (
+              <li key={example} data-register="machine" className="text-meta text-ink-3">
+                {example}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {disabled && (

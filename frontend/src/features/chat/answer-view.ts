@@ -34,9 +34,21 @@ export interface AnswerView {
   inputTokens?: number | null;
   outputTokens?: number | null;
   estimatedCostUsd?: number | null;
+  /**
+   * Usage the turn recorded beyond the per-model responses — the synthesis
+   * pass, and any earlier attempt of a retried model. Derived from persisted
+   * provider-reported totals; null when there is none or nothing was reported.
+   */
+  otherUsage?: { inputTokens: number | null; outputTokens: number | null; estimatedCostUsd: number | null } | null;
   streaming: boolean;
   cancelled: boolean;
   error: { code: ErrorCode; message: string; partial: boolean } | null;
+}
+
+function positiveDifference(total: number | null | undefined, parts: number | null): number | null {
+  if (total === null || total === undefined) return null;
+  const rest = total - (parts ?? 0);
+  return rest > 1e-9 ? rest : null;
 }
 
 function sumNullable(values: ReadonlyArray<number | null | undefined>): number | null {
@@ -80,6 +92,18 @@ export function fromMessage(message: Message): AnswerView {
       : sumNullable(slots.map((s) => s.estimatedCostUsd));
   const estimatedCostUsd = rawCost !== null ? Number(rawCost.toFixed(8)) : null;
 
+  const otherInput = positiveDifference(message.metadata?.inputTokens, sumNullable(slots.map((s) => s.inputTokens)));
+  const otherOutput = positiveDifference(message.metadata?.outputTokens, sumNullable(slots.map((s) => s.outputTokens)));
+  const otherCost = positiveDifference(message.metadata?.estimatedCostUsd, sumNullable(slots.map((s) => s.estimatedCostUsd)));
+  const otherUsage =
+    otherInput !== null || otherOutput !== null || otherCost !== null
+      ? {
+          inputTokens: otherInput,
+          outputTokens: otherOutput,
+          estimatedCostUsd: otherCost !== null ? Number(otherCost.toFixed(8)) : null,
+        }
+      : null;
+
   return {
     messageId: message.id,
     mode: message.mode ?? 'auto',
@@ -95,6 +119,7 @@ export function fromMessage(message: Message): AnswerView {
     inputTokens,
     outputTokens,
     estimatedCostUsd,
+    otherUsage,
     // History is never in flight: a row persisted mid-generation is read back
     // as failed, so `streaming` cannot be true here.
     streaming: false,
@@ -128,7 +153,9 @@ function toSlot(response: Message['responses'][number]): ModelSlot {
           .estimatedCostUsd;
   return {
     model: response.model,
-    phase: response.outcome === 'failed' ? 'failed' : 'complete',
+    // A model stopped by the reader did not finish: it is shown with its
+    // partial text and a retry, not as a completed answer.
+    phase: response.outcome === 'failed' || response.outcome === 'cancelled' ? 'failed' : 'complete',
     text: response.text,
     outcome: response.outcome,
     stance: response.stance,

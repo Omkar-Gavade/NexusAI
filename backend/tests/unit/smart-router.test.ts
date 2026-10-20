@@ -218,8 +218,10 @@ describe('Transparent Performance & Cost — verified pricing and estimation', (
   it('calculates accurate USD estimates from verified pricing when provider tokens are present', () => {
     const res = estimateModelCost('gemini-flash', 1_000_000, 1_000_000);
     expect(res.currency).toBe('USD');
-    expect(res.estimatedCostUsd).toBeCloseTo(0.75, 5); // $0.15 + $0.60
-    expect(res.source).toContain('Google AI Developer Standard Pricing');
+    // Paid-tier rates verified against ai.google.dev/gemini-api/docs/pricing
+    // (October 2026): $0.30 input + $2.50 output per 1M tokens.
+    expect(res.estimatedCostUsd).toBeCloseTo(2.8, 5);
+    expect(res.source).toContain('Google Gemini API pricing');
   });
 
   it('returns null (Unknown) when token counts are missing or zero', () => {

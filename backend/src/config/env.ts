@@ -75,6 +75,9 @@ const Schema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  /** Development pacing for the test adapter. Zero (instant) by default. */
+  TEST_PROVIDER_FIRST_CHUNK_DELAY_MS: z.coerce.number().int().min(0).max(10_000).default(0),
+  TEST_PROVIDER_CHUNK_DELAY_MS: z.coerce.number().int().min(0).max(1_000).default(0),
 
   // Cost and abuse controls. The backend is authoritative; the frontend's
   // limits are a courtesy, not a boundary.
