@@ -7,6 +7,10 @@ dist/
 .env
 .env.*
 !.env.example
+# Key material. `pnpm backend:keys` prints to stdout, but a key saved to a
+# file must never be one `git add .` away from the public history.
+*.pem
+*.key
 *.tsbuildinfo
 .DS_Store
 playwright-report/

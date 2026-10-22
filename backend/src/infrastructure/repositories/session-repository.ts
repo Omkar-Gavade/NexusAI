@@ -39,8 +39,18 @@ export class SessionRepository {
     return this.sessions.findOne({ _id: new ObjectId(sessionId) });
   }
 
+  /**
+   * Records when a token was *first* rotated. The grace window is measured
+   * from that moment: re-stamping it on every in-window reuse let a stolen
+   * token replayed more often than the window keep it open indefinitely.
+   */
   async markRotated(tokenHash: string): Promise<void> {
-    await this.sessions.updateOne({ tokenHash }, { $set: { rotatedAt: new Date() } });
+    await this.sessions.updateOne(
+      // `null` matches both a stored null (how sessions are created) and a
+      // missing field.
+      { tokenHash, rotatedAt: null },
+      { $set: { rotatedAt: new Date() } },
+    );
   }
 
   /** Reuse of a rotated token means it leaked: destroy every descendant. */

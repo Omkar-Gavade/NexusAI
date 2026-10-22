@@ -82,6 +82,43 @@ would otherwise come up healthy with a permanently disabled composer, which is a
 worse failure than not starting. The check runs after the registry is built and
 before the HTTP listener opens.
 
+### Rotating the JWT keys
+
+Access tokens are Ed25519 JWTs verified with `JWT_PUBLIC_KEY` alone — no
+database read — so **anyone holding the private key can sign a token for any
+user**. Rotate whenever the private key may have been seen outside the secret
+store. Refresh tokens are opaque random values stored hashed in MongoDB and are
+not signed with this key, so rotation does not touch them.
+
+1. `pnpm backend:keys` on a trusted machine. Never reuse a key from another
+   environment, a `.env` file or the repository.
+2. In the platform's secret store, set:
+   - `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` → the new pair;
+   - `JWT_RETIRED_PUBLIC_KEYS` → the **old public key** (PEM, escaped `\n` is
+     fine; several keys may be concatenated).
+3. Deploy, and confirm `/health/ready`. A token signed with the old key is now
+   never accepted; it is answered `TOKEN_EXPIRED`, so each open tab refreshes
+   once — with its stored refresh token — and carries on. Nobody is signed out.
+4. After one access-token lifetime (`ACCESS_TOKEN_TTL_SECONDS`, 15 minutes by
+   default) plus a margin, remove `JWT_RETIRED_PUBLIC_KEYS` and redeploy.
+   Leaving it set is harmless but pointless.
+
+**Rollback** is setting the previous `JWT_*` values back. Tokens issued in
+between were signed by the new key and become invalid (`UNAUTHENTICATED` — or
+`TOKEN_EXPIRED` if the new public key is listed as retired), so prefer rolling
+forward.
+
+**If the old key was actually compromised**, also revoke refresh sessions:
+anyone who used the key could have read data as any user, but cannot have
+obtained a refresh token from it — refresh tokens are not derived from the key.
+Revoking every session (`db.sessions.deleteMany({})`) signs everyone out and is
+only warranted if a refresh token itself may have leaked. Decide this
+deliberately; it is not part of a routine rotation.
+
+The server refuses to start with a signing key listed in
+`COMPROMISED_KEY_FINGERPRINTS` (`backend/src/domain/auth/tokens.ts`) — keys
+known to be public — and with a private and public key from different pairs.
+
 ## Schema
 
 Index creation is idempotent and runs at boot. Non-idempotent changes get a
@@ -260,6 +297,9 @@ logger config.
 | Rate limits never trigger | `TRUST_PROXY` trusting a header from a directly reachable service | Set it to the specific hops or addresses |
 | Model shows "credentials were rejected" | Provider rejected the key | Fix the key; it is re-checked after 15 minutes without a restart |
 | `/health/ready` 503 | MongoDB unreachable | Check `MONGODB_URI`, network, credentials |
+| Exits 1: "JWT signing key is publicly known" | The configured key is in the repository history | Generate a new pair and follow "Rotating the JWT keys" |
+| Exits 1: "not the same keypair" | `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` from different runs | Set both from one `pnpm backend:keys` run |
+| Every sign-in fails with `ORIGIN_NOT_ALLOWED` (403) | `WEB_ORIGIN` does not include the address in the browser bar | Add that exact origin; the rejection is logged with both values |
 
 ## What is deliberately absent
 
@@ -340,6 +380,7 @@ response is the most likely first failure and presents as a product bug.
 | `MONGODB_DB_NAME` | ✓ | Not shared with development |
 | `WEB_ORIGIN` | ✓ | Exact scheme + host of the deployed site |
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | ✓ | Ed25519 PEM, generated for **this** environment (`pnpm backend:keys`) |
+| `JWT_RETIRED_PUBLIC_KEYS` | | Only during a key rotation — see "Rotating the JWT keys" |
 | `TRUST_PROXY` | ✓ in practice | Hop count, e.g. `1`. Left unset behind a proxy, every visitor shares one rate-limit bucket |
 | `PORT` | | Defaults 8080; most platforms inject their own |
 | At least one `*_API_KEY` | ✓ | The process exits 1 with none configured |

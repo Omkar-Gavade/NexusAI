@@ -182,6 +182,37 @@ describe('sessions', () => {
     }
   });
 
+  it('keeps the access cookie as long as the refresh session, so an expired token is refreshed, not lost', async () => {
+    // Browsers delete a cookie at its Max-Age. If the access cookie died with
+    // its 15-minute token, the next request carried no token at all, got
+    // UNAUTHENTICATED instead of TOKEN_EXPIRED, and the client signed out a
+    // user whose 30-day refresh session was still valid. (This harness client
+    // ignores Max-Age, which is why the expiry test above never caught it.)
+    const res = await client().post('/api/auth/register', {
+      email: 'cookie-lifetime@example.com',
+      password: 'correct-horse-battery',
+      displayName: 'Cookie',
+    });
+    const cookies = ([] as string[]).concat((res.headers['set-cookie'] as string[] | string) ?? []);
+    const maxAge = (name: string) =>
+      Number(/max-age=(\d+)/i.exec(cookies.find((h) => h.startsWith(`${name}=`)) ?? '')?.[1]);
+
+    const config = harness.container.config;
+    expect(maxAge(REFRESH_COOKIE)).toBe(config.REFRESH_TOKEN_TTL_SECONDS);
+    expect(maxAge(ACCESS_COOKIE)).toBe(config.REFRESH_TOKEN_TTL_SECONDS);
+
+    // The token inside it still expires on its own schedule.
+    const access = cookies.find((h) => h.startsWith(`${ACCESS_COOKIE}=`))!;
+    const jwt = access.slice(ACCESS_COOKIE.length + 1).split(';')[0]!;
+    const payload = JSON.parse(Buffer.from(jwt.split('.')[1]!, 'base64url').toString());
+    expect(payload.exp - payload.iat).toBe(config.ACCESS_TOKEN_TTL_SECONDS);
+
+    // And the cookie flags are unchanged: never readable by script.
+    expect(access).toMatch(/HttpOnly/i);
+    expect(access).toMatch(/SameSite=Lax/i);
+    expect(access).toMatch(/Path=\//);
+  });
+
   it('refreshes and rotates', async () => {
     const c = client();
     await c.signUp();
@@ -222,6 +253,40 @@ describe('sessions', () => {
 
     c.setCookie(REFRESH_COOKIE, original);
     expect((await c.post('/api/auth/refresh')).status).toBe(204);
+  });
+
+  it('measures the grace window from the first rotation, so replays cannot keep extending it', async () => {
+    const c = client();
+    await c.signUp();
+    const original = (c as any).cookies.get(REFRESH_COOKIE) as string;
+    const originalHash = harness.container.tokens.hashRefreshToken(original);
+    const sessions = harness.db.collection('sessions');
+
+    expect((await c.post('/api/auth/refresh')).status).toBe(204);
+    // The first rotation is recorded; without it reuse could never be detected.
+    expect((await sessions.findOne({ tokenHash: originalHash }))?.rotatedAt).toBeInstanceOf(Date);
+
+    // 50s after the rotation: still inside the window, so the replay is
+    // treated as a concurrent tab and allowed…
+    const firstRotation = new Date(Date.now() - 50_000);
+    await sessions.updateOne({ tokenHash: originalHash }, { $set: { rotatedAt: firstRotation } });
+    c.setCookie(REFRESH_COOKIE, original);
+    expect((await c.post('/api/auth/refresh')).status).toBe(204);
+
+    // …but it must not restart the window. A stolen token replayed every 50s
+    // would otherwise never trip reuse detection and mint sessions forever.
+    const stored = await sessions.findOne({ tokenHash: originalHash });
+    expect(stored?.rotatedAt?.getTime()).toBe(firstRotation.getTime());
+
+    // 70s after the first rotation: past the window, so the family dies.
+    await sessions.updateOne(
+      { tokenHash: originalHash },
+      { $set: { rotatedAt: new Date(Date.now() - 70_000) } },
+    );
+    c.setCookie(REFRESH_COOKIE, original);
+    const replayed = await c.post('/api/auth/refresh');
+    expect(replayed.status).toBe(401);
+    expect(replayed.body.error.code).toBe('SESSION_REVOKED');
   });
 
   it('revokes the whole family when a rotated token is replayed after the grace window', async () => {

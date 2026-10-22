@@ -88,6 +88,21 @@ const Schema = z.object({
    */
   JWT_PRIVATE_KEY: z.string().min(1).transform(unescapeNewlines),
   JWT_PUBLIC_KEY: z.string().min(1).transform(unescapeNewlines),
+  /**
+   * Public keys of signing keys that have been rotated out, as one or more
+   * concatenated PEM blocks. Optional, and only for the length of one access
+   * token lifetime after a rotation: a token signed by a retired key is never
+   * accepted, but is answered TOKEN_EXPIRED so the client refreshes instead of
+   * signing the user out. See docs/backend/deployment.md, "Rotating the JWT keys".
+   */
+  JWT_RETIRED_PUBLIC_KEYS: z
+    .string()
+    .default('')
+    .transform((raw): readonly string[] =>
+      [...unescapeNewlines(raw).matchAll(/-----BEGIN PUBLIC KEY-----[\s\S]*?-----END PUBLIC KEY-----/g)].map(
+        (m) => m[0],
+      ),
+    ),
   JWT_ISSUER: z.string().default('nexusai'),
   JWT_AUDIENCE: z.string().default('nexusai-web'),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),

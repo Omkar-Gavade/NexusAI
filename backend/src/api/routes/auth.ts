@@ -27,12 +27,18 @@ export function registerAuthRoutes(
   function issueCookies(reply: FastifyReply, session: IssuedSession): void {
     const secure = config.NODE_ENV === 'production';
 
+    // The cookie outlives the token inside it on purpose. The JWT still
+    // expires after ACCESS_TOKEN_TTL_SECONDS, and an expired one is answered
+    // TOKEN_EXPIRED, which the client refreshes. A cookie that died with its
+    // token was deleted by the browser instead, so the next request carried
+    // nothing, got UNAUTHENTICATED, and signed out a user whose refresh
+    // session was still valid. An expired JWT grants nothing.
     reply.setCookie(ACCESS_COOKIE, session.accessToken, {
       httpOnly: true,
       secure,
       sameSite: 'lax',
       path: '/',
-      maxAge: config.ACCESS_TOKEN_TTL_SECONDS,
+      maxAge: config.REFRESH_TOKEN_TTL_SECONDS,
     });
 
     // Strict and scoped to /api/auth: even a top-level cross-site navigation
