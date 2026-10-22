@@ -57,7 +57,7 @@ export async function buildApp(container: Container): Promise<FastifyInstance> {
   // One exact origin. Reflecting the request origin with credentials is the
   // canonical way to accidentally disable CORS entirely.
   await app.register(cors, {
-    origin: [config.WEB_ORIGIN],
+    origin: [...config.WEB_ORIGIN],
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'X-Nexus-Client'],

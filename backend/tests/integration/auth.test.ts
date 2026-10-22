@@ -196,6 +196,21 @@ describe('sessions', () => {
     expect(res.body.error.code).toBe('SESSION_EXPIRED');
   });
 
+  it('rejects an expired refresh session and clears the cookies, so the client stops retrying', async () => {
+    const c = client();
+    const { user } = await c.signUp();
+    await harness.db
+      .collection('sessions')
+      .updateMany({ userId: new ObjectId(user.id) }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+
+    const res = await c.post('/api/auth/refresh');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('SESSION_EXPIRED');
+    const cleared = ([] as string[]).concat((res.headers['set-cookie'] as string[] | string) ?? []);
+    expect(cleared.some((h) => h.startsWith(`${REFRESH_COOKIE}=;`))).toBe(true);
+    expect(cleared.some((h) => h.startsWith(`${ACCESS_COOKIE}=;`))).toBe(true);
+  });
+
   // Two tabs can legitimately refresh at once; the grace window is what stops
   // ordinary use from tripping reuse detection.
   it('allows a rotated token to be reused inside the grace window', async () => {
@@ -322,6 +337,9 @@ describe('CSRF', () => {
       },
       payload: JSON.stringify({ email: 'x@example.com', password: 'correct-horse-battery' }),
     });
-    expect(res.statusCode).toBe(401);
+    // Its own code, not UNAUTHENTICATED: "Sign in to continue" on the sign-in
+    // form hid a misconfigured WEB_ORIGIN behind a message blaming the user.
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).error.code).toBe('ORIGIN_NOT_ALLOWED');
   });
 });

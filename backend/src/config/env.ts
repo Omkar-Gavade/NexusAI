@@ -18,8 +18,41 @@ const Schema = z.object({
   MONGODB_URI: z.string().min(1),
   MONGODB_DB_NAME: z.string().min(1).default('nexusai'),
 
-  /** Exact origin of the frontend. Never a wildcard, never reflected. */
-  WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
+  /**
+   * The frontend origin(s) allowed to call the API with cookies — exact
+   * origins, comma-separated if there is more than one (production plus a
+   * preview, say). Never a wildcard, never reflected.
+   *
+   * Each entry is normalised to what a browser sends in `Origin`: scheme, host
+   * and port, lower-cased, with no path and no trailing slash. Comparing the
+   * raw string made `https://app.example/` — a slash pasted from the address
+   * bar — reject every sign-in with nothing in the logs to say why.
+   */
+  WEB_ORIGIN: z
+    .string()
+    .default('http://localhost:5173')
+    .transform((raw, ctx): readonly string[] => {
+      const origins: string[] = [];
+      for (const entry of raw.split(',').map((e) => e.trim()).filter(Boolean)) {
+        let url: URL;
+        try {
+          url = new URL(entry);
+        } catch {
+          ctx.addIssue({ code: 'custom', message: `"${entry}" is not a URL` });
+          return z.NEVER;
+        }
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+          ctx.addIssue({ code: 'custom', message: `"${entry}" must be http(s)` });
+          return z.NEVER;
+        }
+        origins.push(url.origin);
+      }
+      if (origins.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'at least one origin is required' });
+        return z.NEVER;
+      }
+      return [...new Set(origins)];
+    }),
 
   /**
    * Whether `X-Forwarded-For` may be believed, and from how far.

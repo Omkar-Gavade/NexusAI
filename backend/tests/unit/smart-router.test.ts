@@ -238,21 +238,28 @@ describe('Transparent Performance & Cost — verified pricing and estimation', (
     expect(res.source).toBeNull();
   });
 
-  it('includes identifiable source, currency, and upstreamModel for all verified catalog models', () => {
-    for (const modelId of [
-      'gpt-4o',
-      'claude-sonnet',
-      'gemini-flash',
-      'mistral-large',
-      'deepseek-chat',
-      'llama-groq',
-    ]) {
-      const pricing = VERIFIED_MODEL_PRICING[modelId];
-      expect(pricing).toBeDefined();
-      expect(pricing?.currency).toBe('USD');
-      expect(pricing?.source.length).toBeGreaterThan(10);
-      expect(pricing?.inputUsdPerMillion).toBeGreaterThan(0);
-      expect(pricing?.outputUsdPerMillion).toBeGreaterThan(0);
+  it('includes identifiable source, currency, upstreamModel and date for every verified price', () => {
+    expect(Object.keys(VERIFIED_MODEL_PRICING).sort()).toEqual(
+      ['claude-sonnet', 'gemini-flash', 'gpt-4o', 'llama-groq'].sort(),
+    );
+    for (const pricing of Object.values(VERIFIED_MODEL_PRICING)) {
+      expect(pricing.currency).toBe('USD');
+      expect(pricing.source.length).toBeGreaterThan(10);
+      expect(pricing.upstreamModel.length).toBeGreaterThan(0);
+      expect(pricing.asOf).toMatch(/^\d{4}-\d{2}$/);
+      expect(pricing.inputUsdPerMillion).toBeGreaterThan(0);
+      expect(pricing.outputUsdPerMillion).toBeGreaterThan(0);
     }
   });
+
+  // Prices that could not be pinned to the model actually called report as
+  // Unknown: Mistral's `-latest` alias has no documented target, and DeepSeek
+  // prices its Flash model by time of day. A stale figure would be worse.
+  it.each(['mistral-large', 'deepseek-chat'])(
+    'reports %s cost as Unknown rather than a stale static rate',
+    (modelId) => {
+      expect(getModelPricing(modelId)).toBeNull();
+      expect(estimateModelCost(modelId, 1_000, 1_000).estimatedCostUsd).toBeNull();
+    },
+  );
 });

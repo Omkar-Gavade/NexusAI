@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const ErrorCode = z.enum([
   'VALIDATION_ERROR',
   'UNAUTHENTICATED',
+  'ORIGIN_NOT_ALLOWED',
   'TOKEN_EXPIRED',
   'SESSION_EXPIRED',
   'SESSION_REVOKED',
@@ -57,6 +58,8 @@ export type ErrorResponse = z.infer<typeof ErrorResponse>;
 export const errorMessages: Record<ErrorCode, string> = {
   VALIDATION_ERROR: 'Check the highlighted fields and try again.',
   UNAUTHENTICATED: 'Sign in to continue.',
+  ORIGIN_NOT_ALLOWED:
+    "This address isn't allowed to reach the NexusAI server, so you can't sign in from here. If you run this deployment, add this site's address to the server's allowed origins.",
   TOKEN_EXPIRED: 'Your session needs refreshing.',
   SESSION_EXPIRED: 'Your session expired. Sign in to continue.',
   SESSION_REVOKED: "You've been signed out for security reasons.",

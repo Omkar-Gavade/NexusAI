@@ -16,7 +16,7 @@ import type { Config } from '../../config/env.ts';
 import type { Logger } from '../../infrastructure/observability/logger.ts';
 import type { ConversationRepository } from '../../infrastructure/repositories/conversation-repository.ts';
 import type { MessageRepository } from '../../infrastructure/repositories/message-repository.ts';
-import type { MessageDoc, ModelResponseDoc } from '../../infrastructure/repositories/types.ts';
+import type { ModelResponseDoc } from '../../infrastructure/repositories/types.ts';
 import { emptyUsage, type StreamUsage } from '../../infrastructure/llm/adapter.ts';
 import { toWireMessage } from '../../application/conversation-service.ts';
 import { AppError, Errors, isAppError } from '../errors.ts';
@@ -24,6 +24,7 @@ import type { ModelDefinition } from '../models/catalog.ts';
 import type { ModelRegistry } from '../models/registry.ts';
 import { buildSynthesisMessages, VERDICT_CLOSE, VERDICT_OPEN } from '../synthesis/prompt.ts';
 import { computeAgreement, parseVerdicts, type OutcomeSummary } from './agreement.ts';
+import { stallTimeout, type StallTimeout } from './stall-timeout.ts';
 
 export interface OrchestratorRequest {
   readonly userId: string;
@@ -487,6 +488,7 @@ export class ChatOrchestrator {
     let stances: Record<string, Stance> = {};
     let firstTokenMs: number | null = null;
     let synthesisUsage = emptyUsage();
+    let synthesisTimeout: StallTimeout | undefined;
 
     for (;;) {
     yield { type: 'synthesis_start', model: registry.ref(synthesist) };
@@ -496,10 +498,11 @@ export class ChatOrchestrator {
     const adapter = registry.adapterFor(synthesist);
     if (!adapter) throw Errors.noModelAvailable();
 
-    const synthesisSignal = AbortSignal.any([
-      signal,
-      AbortSignal.timeout(config.SYNTHESIS_TIMEOUT_MS),
-    ]);
+    // Silence-limited like the model calls: a long reconciled answer that is
+    // still arriving is not a stalled synthesist.
+    synthesisTimeout?.dispose();
+    synthesisTimeout = stallTimeout(config.SYNTHESIS_TIMEOUT_MS, config.ORCHESTRATION_TIMEOUT_MS);
+    const synthesisSignal = AbortSignal.any([signal, synthesisTimeout.signal]);
 
     try {
       // Built as a pair: the fence label in the instructions must be the same
@@ -521,6 +524,7 @@ export class ChatOrchestrator {
       );
 
       for await (const chunk of stream) {
+        synthesisTimeout.touch();
         raw += chunk;
         firstTokenMs ??= Date.now() - startedAt;
 
@@ -555,7 +559,12 @@ export class ChatOrchestrator {
         yield { type: 'delta', text: chunk };
       }
     } catch (error) {
-      const failure = isAppError(error) ? error : Errors.synthesisFailed({ cause: String(error) });
+      synthesisTimeout.dispose();
+      const failure: AppError = isAppError(error)
+        ? error
+        : synthesisTimeout.fired && !signal.aborted
+          ? Errors.timeout({ modelId: synthesist.id })
+          : Errors.synthesisFailed({ cause: String(error) });
       registry.health.recordFailure(synthesist.provider, {
         affectsHealth: failure.retryable,
         isAuthError: failure.code === 'AUTH_ERROR',
@@ -633,6 +642,7 @@ export class ChatOrchestrator {
 
     break;
     }
+    synthesisTimeout?.dispose();
 
     if (signal.aborted) {
       yield* this.finaliseCancelled(
@@ -820,37 +830,22 @@ export class ChatOrchestrator {
     const content = (parsed.remainder || raw).trim();
     if (!content) throw Errors.synthesisFailed({ reason: 'synthesis produced no text' });
 
-    const stances = parsed.stances;
-    const updatedResponses: ModelResponseDoc[] = doc.responses.map((r) => {
-      const responded = r.outcome === 'complete' && Boolean(r.text.trim());
-      return {
-        ...r,
-        stance: responded ? (stances[r.model.modelId] ?? 'unknown') : 'unknown',
-      };
-    });
-
-    const summary: OutcomeSummary[] = updatedResponses.map((r) => ({
-      modelId: r.model.modelId,
-      responded: r.outcome === 'complete' && Boolean(r.text.trim()),
-      stance: r.stance,
-    }));
-    const agreement = computeAgreement(summary);
+    // Only the models that contributed were judged; every other stance is
+    // reset to unknown rather than carried over from an earlier synthesis.
+    const judged = new Set(contributions.map((c) => c.model.id));
     const synthesisRef = registry.ref(synthesist);
-
-    await messages.finalise(doc._id, {
+    const fresh = await messages.applySynthesis(doc._id, {
       content,
       synthesisModel: synthesisRef,
-      responses: updatedResponses,
-      agreement,
+      stances: doc.responses.map((r) => ({
+        modelId: r.model.modelId,
+        stance: judged.has(r.model.modelId)
+          ? (parsed.stances[r.model.modelId] ?? 'unknown')
+          : 'unknown',
+      })),
     });
-
-    return toWireMessage({
-      ...doc,
-      content,
-      synthesisModel: synthesisRef,
-      responses: updatedResponses,
-      agreement,
-    });
+    if (!fresh) throw Errors.notFound();
+    return toWireMessage(fresh);
   }
 
   /**
@@ -896,44 +891,19 @@ export class ChatOrchestrator {
       errorCode: attempt.errorCode,
     };
 
-    const fresh: MessageDoc | null = await messages.replaceResponse(doc._id, modelId, newResponseDoc);
-    if (!fresh) throw Errors.notFound();
-    const updatedResponses = fresh.responses;
-    const summary: OutcomeSummary[] = updatedResponses.map((r) => ({
-      modelId: r.model.modelId,
-      responded: r.outcome === 'complete' && Boolean(r.text.trim()),
-      stance: r.stance,
-    }));
-    const agreement = computeAgreement(summary);
-    const anyComplete = updatedResponses.some(
-      (r) => r.outcome === 'complete' && Boolean(r.text.trim()),
-    );
-    const status: MessageStatus = anyComplete ? 'complete' : fresh.status;
-
-    // A retry is spend on top of the original turn, not a replacement for it:
-    // the first call was billed whether or not it answered. The turn's totals
-    // therefore accumulate, and still only from provider-reported numbers.
-    const metadata = fresh.metadata
-      ? {
-          ...fresh.metadata,
-          inputTokens: sum([fresh.metadata.inputTokens, attempt.inputTokens]),
-          outputTokens: sum([fresh.metadata.outputTokens, attempt.outputTokens]),
-          estimatedCostUsd: roundCost(
-            sum([fresh.metadata.estimatedCostUsd ?? null, attempt.estimatedCostUsd]),
-          ),
-        }
-      : null;
-
-    // Derived fields only; the response itself was written atomically above.
-    await messages.finalise(doc._id, { status, agreement, metadata });
-
-    return toWireMessage({
-      ...fresh,
-      status,
-      responses: updatedResponses,
-      agreement,
-      metadata,
+    // The response, the turn's accumulated spend, its status and its
+    // agreement are each written by an atomic update against what is stored
+    // now, never from this snapshot — so a retry that overlaps another retry,
+    // or a synthesis, keeps every result.
+    // A retry is spend on top of the original call, which was billed whether
+    // or not it answered, so usage accumulates rather than being replaced.
+    const fresh = await messages.recordRetry(doc._id, modelId, newResponseDoc, {
+      inputTokens: attempt.inputTokens,
+      outputTokens: attempt.outputTokens,
+      estimatedCostUsd: attempt.estimatedCostUsd,
     });
+    if (!fresh) throw Errors.notFound();
+    return toWireMessage(fresh);
   }
 
   // --- helpers -------------------------------------------------------------
@@ -1192,10 +1162,11 @@ export class ChatOrchestrator {
       return { ...base, errorCode: 'MODEL_UNAVAILABLE' };
     }
 
-    // Per-call timeout, plus the caller's cancellation. Either aborts the
-    // underlying provider request; neither leaves it running.
-    const timeout = AbortSignal.timeout(config.MODEL_TIMEOUT_MS);
-    const combined = AbortSignal.any([signal, timeout]);
+    // A silence limit (restarted by every chunk) and a hard ceiling, plus the
+    // caller's cancellation. Any of them aborts the underlying provider
+    // request; none leaves it running.
+    const timeout = stallTimeout(config.MODEL_TIMEOUT_MS, config.ORCHESTRATION_TIMEOUT_MS);
+    const combined = AbortSignal.any([signal, timeout.signal]);
 
     // Streamed even when nobody watches the text, because that is the only way
     // to measure time to first token. Usage comes from the provider's own
@@ -1215,10 +1186,15 @@ export class ChatOrchestrator {
         usage,
       )) {
         if (!chunk) continue;
+        timeout.touch();
         firstTokenMs ??= Date.now() - startedAt;
         text += chunk;
         onChunk?.(chunk);
       }
+      // A stream that "ended" because the call was aborted (cancelled, silent
+      // too long, past the ceiling) is not a finished answer, whatever text
+      // arrived before it. Never record it as complete.
+      if (combined.aborted) throw combined.reason;
 
       registry.health.recordSuccess(model.provider);
       const { estimatedCostUsd } = estimateModelCost(
@@ -1249,7 +1225,7 @@ export class ChatOrchestrator {
       // provider had in fact stopped responding, and because a cancellation is
       // not held against a provider, the circuit breaker never saw it either.
       const cancelled = signal.aborted;
-      const timedOut = !cancelled && (timeout.aborted || raw.code === 'CANCELLED');
+      const timedOut = !cancelled && (timeout.fired || raw.code === 'CANCELLED');
       const failure = timedOut ? Errors.timeout({ modelId: model.id }) : raw;
 
       registry.health.recordFailure(model.provider, {
@@ -1272,6 +1248,8 @@ export class ChatOrchestrator {
           .estimatedCostUsd,
         errorCode: failure.code,
       };
+    } finally {
+      timeout.dispose();
     }
   }
 
@@ -1445,10 +1423,6 @@ function verdictBlockRuledOut(raw: string): boolean {
 
 /** Generous ceiling for `<verdicts>…</verdicts>`: a handful of short lines. */
 const VERDICT_BLOCK_LIMIT = 600;
-
-function roundCost(value: number | null): number | null {
-  return value === null ? null : Number(value.toFixed(8));
-}
 
 function sum(values: ReadonlyArray<number | null>): number | null {
   const known = values.filter((v): v is number => v !== null);

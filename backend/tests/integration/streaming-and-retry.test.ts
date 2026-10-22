@@ -200,6 +200,8 @@ describe('retrying one model', () => {
       harness.testAdapter.program(id, { kind: 'fail', error: Errors.timeout({ modelId: id }) });
     }
     const turn = await arenaTurn(null, 'Two of three models time out.');
+    const before = (await client.get(`/api/conversations/${turn.conversationId}/messages`)).body
+      .messages.find((m: Message) => m.id === turn.messageId) as Message;
 
     harness.testAdapter.reset();
     harness.testAdapter.program('test-beta', { kind: 'succeed', text: 'Beta retried.', delayMs: 60 });
@@ -217,6 +219,58 @@ describe('retrying one model', () => {
     const byId = Object.fromEntries(message.responses.map((r) => [r.model.modelId, r]));
     expect(byId['test-beta']).toMatchObject({ outcome: 'complete', text: 'Beta retried.' });
     expect(byId['test-gamma']).toMatchObject({ outcome: 'complete', text: 'Gamma retried.' });
+
+    // Both retries' spend is added to the turn — neither overwrites the other.
+    const added = (byId['test-beta']!.inputTokens ?? 0) + (byId['test-gamma']!.inputTokens ?? 0);
+    expect(added).toBeGreaterThan(0);
+    expect(message.metadata?.inputTokens).toBe((before.metadata?.inputTokens ?? 0) + added);
+    expect(message.agreement).toMatchObject({ requested: 3, responded: 3 });
+    expect(message.status).toBe('complete');
+  });
+});
+
+describe('combining and retrying the same turn at once', () => {
+  it('keeps a retried answer that lands while synthesis is still running', async () => {
+    harness.testAdapter.program('test-gamma', {
+      kind: 'fail',
+      error: Errors.timeout({ modelId: 'test-gamma' }),
+    });
+    const res = await client.post('/api/chat/stream', {
+      conversationId: null,
+      message: 'Two answer, one times out.',
+      selection: { mode: 'compare', modelIds: ['test-alpha', 'test-beta', 'test-gamma'] },
+      clientMessageId: ulid(),
+    });
+    const list = events(String(res.body));
+    const conversationId = ofType(list, 'start')[0]!.conversationId;
+    const messageId = ofType(list, 'complete')[0]!.messageId;
+
+    // The synthesist (test-alpha) is slow; the retried model is quick.
+    harness.testAdapter.reset();
+    harness.testAdapter.program('test-alpha', {
+      kind: 'succeed',
+      delayMs: 250,
+      text: '<verdicts>\ntest-alpha: concurs\ntest-beta: diverges\n</verdicts>\nCombined answer.',
+    });
+    harness.testAdapter.program('test-gamma', { kind: 'succeed', text: 'Gamma, retried.' });
+
+    const base = `/api/conversations/${conversationId}/messages/${messageId}`;
+    const synth = client.post(`${base}/synthesize`, {});
+    await new Promise((r) => setTimeout(r, 50));
+    const retry = await client.post(`${base}/retry-model`, { modelId: 'test-gamma' });
+    expect(retry.status).toBe(200);
+    expect((await synth).status).toBe(200);
+
+    const after = await client.get(`/api/conversations/${conversationId}/messages`);
+    const message = (after.body.messages as Message[]).find((m) => m.id === messageId)!;
+    const byId = Object.fromEntries(message.responses.map((r) => [r.model.modelId, r]));
+    expect(byId['test-gamma']).toMatchObject({ outcome: 'complete', text: 'Gamma, retried.' });
+    // The synthesis landed too, with the stances it judged.
+    expect(message.content).toBe('Combined answer.');
+    expect(byId['test-alpha']?.stance).toBe('concurs');
+    expect(byId['test-beta']?.stance).toBe('diverges');
+    // And the derived agreement counts what is actually stored now.
+    expect(message.agreement).toMatchObject({ requested: 3, responded: 3 });
   });
 });
 

@@ -42,6 +42,17 @@ beforeAll(async () => {
       lastRequest = { url: req.url!, headers: req.headers, body: raw ? JSON.parse(raw) : null };
       const url = req.url!;
 
+      // --- A stream that keeps going until the client gives up ---
+      if (url.startsWith('/slow-openai/chat/completions')) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'First ' } }] })}\n\n`);
+        const timer = setInterval(() => {
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'more ' } }] })}\n\n`);
+        }, 30);
+        res.on('close', () => clearInterval(timer));
+        return;
+      }
+
       // --- In-stream failures after a 200 ---
       if (url.startsWith('/broken-openai/chat/completions')) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -300,5 +311,22 @@ describe('in-stream provider failures', () => {
     await expect(collect(adapter.stream(broken, AbortSignal.timeout(5000)))).rejects.toMatchObject({
       code: 'PROVIDER_UNAVAILABLE',
     });
+  });
+
+  // An abort must surface as a failure. If the stream simply ended, the
+  // orchestrator would record the text so far as a complete answer.
+  it('an abort mid-stream rejects instead of ending the stream as if it were complete', async () => {
+    const adapter = new OpenAICompatibleAdapter('openai', `${baseUrl}/slow-openai`, 'test-key');
+    const controller = new AbortController();
+    const seen: string[] = [];
+    const outcome = (async () => {
+      for await (const chunk of adapter.stream(request, controller.signal)) {
+        seen.push(chunk);
+        if (seen.length === 2) controller.abort();
+      }
+      return 'ended normally';
+    })();
+    await expect(outcome).rejects.toBeDefined();
+    expect(seen.length).toBeGreaterThanOrEqual(2);
   });
 });

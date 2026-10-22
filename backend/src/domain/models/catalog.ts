@@ -128,11 +128,15 @@ export const CATALOG: readonly ModelDefinition[] = [
     testOnly: false,
   },
   {
+    // `deepseek-v4-flash` is a legacy name DeepSeek still accepts; its docs
+    // say those requests are served by DeepSeek-V4.1-Flash, so that is the
+    // name shown. The current API name is `deepseek-flash` — switch once a
+    // live call has verified it (the live suite needs a funded key).
     id: 'deepseek-chat',
     provider: 'deepseek',
     providerDisplayName: 'DeepSeek',
     providerModelId: 'deepseek-v4-flash',
-    displayName: 'DeepSeek V4 Flash',
+    displayName: 'DeepSeek V4.1 Flash',
     description: 'Strong technical and mathematical reasoning.',
     contextWindow: 64_000,
     maxOutputTokens: 8_192,

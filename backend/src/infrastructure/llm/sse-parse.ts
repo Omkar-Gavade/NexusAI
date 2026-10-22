@@ -18,7 +18,17 @@ export async function* readUpstreamSSE(
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        // A cancelled read can resolve as `done`. An aborted call is a
+        // failure, never a provider that finished: report it as one, or a
+        // truncated answer would be recorded as complete.
+        if (signal.aborted) {
+          throw signal.reason instanceof Error
+            ? signal.reason
+            : new DOMException('The stream was aborted.', 'AbortError');
+        }
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
       const frames = buffer.split(/\r?\n\r?\n/);

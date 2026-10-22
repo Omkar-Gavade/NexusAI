@@ -42,6 +42,9 @@ await app.listen({ port: config.PORT, host: '0.0.0.0' });
 logger.info(
   {
     port: config.PORT,
+    // Public values, logged so a mismatch with the frontend's address is
+    // visible in the platform logs rather than only as failed sign-ins.
+    webOrigins: config.WEB_ORIGIN,
     routableModels: container.registry.routable().length,
     autoAvailable: container.registry.autoAvailable(),
   },

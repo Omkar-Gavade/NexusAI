@@ -1,6 +1,14 @@
 import { ObjectId, type Collection, type Db } from 'mongodb';
-import type { MessageStatus } from '@nexusai/contracts';
+import type { MessageStatus, Stance } from '@nexusai/contracts';
 import type { MessageDoc } from './types.ts';
+
+/** Aggregation form of "this model responded": complete, with non-blank text. */
+const RESPONDED = {
+  $and: [
+    { $eq: ['$$r.outcome', 'complete'] },
+    { $gt: [{ $strLenCP: { $trim: { input: { $ifNull: ['$$r.text', ''] } } } }, 0] },
+  ],
+};
 
 export class MessageRepository {
   private readonly messages: Collection<MessageDoc>;
@@ -129,21 +137,114 @@ export class MessageRepository {
   }
 
   /**
-   * Replaces one model's response in place.
+   * Records a synthesis on an existing turn without rewriting its responses.
    *
-   * A positional update rather than rewriting the array: two models retried at
-   * once on the same turn each read the old array, and whichever wrote last
-   * erased the other's new answer.
+   * Only the synthesis fields and each judged model's `stance` are written,
+   * positionally. Rewriting the whole `responses` array from the snapshot read
+   * before the (slow) synthesis call erased any model retried in the meantime.
    */
-  async replaceResponse(
+  async applySynthesis(
+    messageId: ObjectId,
+    input: {
+      content: string;
+      synthesisModel: NonNullable<MessageDoc['synthesisModel']>;
+      stances: ReadonlyArray<{ modelId: string; stance: Stance }>;
+    },
+  ): Promise<MessageDoc | null> {
+    const set: Record<string, unknown> = {
+      content: input.content,
+      synthesisModel: input.synthesisModel,
+    };
+    const arrayFilters = input.stances.map(({ modelId }, index) => ({
+      [`s${index}.model.modelId`]: modelId,
+    }));
+    input.stances.forEach(({ stance }, index) => {
+      set[`responses.$[s${index}].stance`] = stance;
+    });
+    await this.messages.updateOne({ _id: messageId }, { $set: set }, { arrayFilters });
+    return this.recomputeAgreement(messageId);
+  }
+
+  /**
+   * Records one model's retried response and the spend it added.
+   *
+   * Each step is its own atomic update computed inside the database, so
+   * concurrent writers converge rather than one overwriting another.
+   *
+   * The response is replaced positionally (two models retried at once each
+   * keep their own result), and the turn's usage totals accumulate inside the
+   * database rather than from a value read earlier — read-modify-write there
+   * lost the cost of whichever retry finished first.
+   */
+  async recordRetry(
     messageId: ObjectId,
     modelId: string,
     response: MessageDoc['responses'][number],
+    spend: { inputTokens: number | null; outputTokens: number | null; estimatedCostUsd: number | null },
   ): Promise<MessageDoc | null> {
-    return this.messages.findOneAndUpdate(
+    const replaced = await this.messages.updateOne(
       { _id: messageId },
       { $set: { 'responses.$[target]': response } },
-      { arrayFilters: [{ 'target.model.modelId': modelId }], returnDocument: 'after' },
+      { arrayFilters: [{ 'target.model.modelId': modelId }] },
+    );
+    if (replaced.matchedCount === 0) return null;
+
+    // Null means "not reported": adding it would turn an unknown into a zero.
+    const accumulate = (field: string, value: number | null, round = false) => {
+      if (value === null) return `$metadata.${field}`;
+      const total = { $add: [{ $ifNull: [`$metadata.${field}`, 0] }, value] };
+      return round ? { $round: [total, 8] } : total;
+    };
+    await this.messages.updateOne({ _id: messageId, metadata: { $type: 'object' } }, [
+      {
+        $set: {
+          'metadata.inputTokens': accumulate('inputTokens', spend.inputTokens),
+          'metadata.outputTokens': accumulate('outputTokens', spend.outputTokens),
+          'metadata.estimatedCostUsd': accumulate('estimatedCostUsd', spend.estimatedCostUsd, true),
+        },
+      },
+    ]);
+
+    // A turn with any usable answer is complete; otherwise it keeps its status.
+    await this.messages.updateOne({ _id: messageId }, [
+      {
+        $set: {
+          status: {
+            $cond: [{ $gt: [{ $size: { $filter: { input: '$responses', as: 'r', cond: RESPONDED } } }, 0] }, 'complete', '$status'],
+          },
+        },
+      },
+    ]);
+    return this.recomputeAgreement(messageId);
+  }
+
+  /**
+   * Derives `agreement` from the responses stored *now*, in one atomic step.
+   *
+   * Every writer calls this after its own change, so the last one to run
+   * always reflects the latest responses — concurrent writers converge instead
+   * of the slower one overwriting the faster one's counts with a stale view.
+   * Mirrors `computeAgreement`: responded = complete with non-blank text.
+   */
+  async recomputeAgreement(messageId: ObjectId): Promise<MessageDoc | null> {
+    const count = (cond: unknown) => ({
+      $size: { $filter: { input: '$responses', as: 'r', cond } },
+    });
+    return this.messages.findOneAndUpdate(
+      { _id: messageId },
+      [
+        {
+          $set: {
+            agreement: {
+              requested: { $size: '$responses' },
+              responded: count(RESPONDED),
+              concur: count({ $and: [RESPONDED, { $eq: ['$$r.stance', 'concurs'] }] }),
+              diverge: count({ $and: [RESPONDED, { $eq: ['$$r.stance', 'diverges'] }] }),
+            },
+          },
+        },
+      ],
+      { returnDocument: 'after' },
     );
   }
 

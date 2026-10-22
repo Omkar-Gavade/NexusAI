@@ -19,11 +19,24 @@ export interface CostEstimate {
 }
 
 /**
- * Verified per-1M-token standard API list rates in USD.
+ * Per-1M-token standard API list rates in USD, each checked against the
+ * provider's own pricing page on the `asOf` date.
+ *
  * Kept strictly separate from provider billing records; used solely to compute
- * clearly-labeled per-response cost estimates when actual provider token counts
- * are reported. Test adapters and unverified models are excluded so their cost
- * reports as `null` ("Unknown") rather than a fabricated $0.00 claim.
+ * clearly-labelled per-response cost estimates when the provider reported
+ * token counts. A model without an entry here reports its cost as `null`
+ * ("Unknown") rather than a fabricated figure — which is deliberately the case
+ * for the two models below whose current price could not be pinned down:
+ *
+ * - `mistral-large` → `mistral-medium-latest`. Mistral does not document which
+ *   version the alias resolves to, and its pricing page (October 2026) lists
+ *   only Mistral Medium 3.5, at $1.50 in / $7.50 out — nearly four times the
+ *   $0.40 / $2.00 previously recorded here. Re-add once the model is pinned
+ *   to an explicit version whose price is published.
+ * - `deepseek-chat` → `deepseek-v4-flash`, a legacy alias now served by
+ *   DeepSeek-V4.1-Flash and "billed at the Flash price", which DeepSeek sets
+ *   by time of day (peak and off-peak). A single static rate would be wrong
+ *   for part of every day.
  */
 export const VERIFIED_MODEL_PRICING: Readonly<Record<string, ModelPricing>> = {
   'gpt-4o': {
@@ -32,8 +45,8 @@ export const VERIFIED_MODEL_PRICING: Readonly<Record<string, ModelPricing>> = {
     inputUsdPerMillion: 2.5,
     outputUsdPerMillion: 10.0,
     currency: 'USD',
-    source: 'OpenAI API Standard Pricing (GPT-4o)',
-    asOf: '2025-05',
+    source: 'OpenAI API pricing (GPT-4o, standard tier)',
+    asOf: '2026-10',
   },
   'claude-sonnet': {
     modelId: 'claude-sonnet',
@@ -41,8 +54,8 @@ export const VERIFIED_MODEL_PRICING: Readonly<Record<string, ModelPricing>> = {
     inputUsdPerMillion: 3.0,
     outputUsdPerMillion: 15.0,
     currency: 'USD',
-    source: 'Anthropic API Standard Pricing (claude-sonnet-4-5)',
-    asOf: '2025-05',
+    source: 'Anthropic API pricing (Claude Sonnet 4.5, base rates)',
+    asOf: '2026-10',
   },
   'gemini-flash': {
     modelId: 'gemini-flash',
@@ -56,32 +69,14 @@ export const VERIFIED_MODEL_PRICING: Readonly<Record<string, ModelPricing>> = {
     source: 'Google Gemini API pricing (gemini-2.5-flash, paid tier)',
     asOf: '2026-10',
   },
-  'mistral-large': {
-    modelId: 'mistral-large',
-    upstreamModel: 'mistral-medium-latest',
-    inputUsdPerMillion: 0.4,
-    outputUsdPerMillion: 2.0,
-    currency: 'USD',
-    source: 'Mistral AI La Plateforme Pricing (mistral-medium-latest)',
-    asOf: '2025-05',
-  },
-  'deepseek-chat': {
-    modelId: 'deepseek-chat',
-    upstreamModel: 'deepseek-v4-flash',
-    inputUsdPerMillion: 0.14,
-    outputUsdPerMillion: 0.28,
-    currency: 'USD',
-    source: 'DeepSeek API Standard Pricing (deepseek-v4-flash)',
-    asOf: '2025-05',
-  },
   'llama-groq': {
     modelId: 'llama-groq',
     upstreamModel: 'openai/gpt-oss-120b',
     inputUsdPerMillion: 0.15,
     outputUsdPerMillion: 0.6,
     currency: 'USD',
-    source: 'Groq Cloud On-Demand Pricing (openai/gpt-oss-120b)',
-    asOf: '2025-05',
+    source: 'GroqCloud model pricing (openai/gpt-oss-120b, on-demand)',
+    asOf: '2026-10',
   },
 };
 

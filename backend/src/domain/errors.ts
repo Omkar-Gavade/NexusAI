@@ -55,6 +55,9 @@ export const Errors = {
     new AppError('VALIDATION_ERROR', m.VALIDATION_ERROR, { status: 400, details }),
 
   unauthenticated: () => new AppError('UNAUTHENTICATED', m.UNAUTHENTICATED, { status: 401 }),
+  /** The request came from a web origin this deployment does not allow. */
+  originNotAllowed: () =>
+    new AppError('ORIGIN_NOT_ALLOWED', m.ORIGIN_NOT_ALLOWED, { status: 403 }),
 
   // Distinct from UNAUTHENTICATED on purpose: the frontend refreshes on this
   // code and signs the user out on the other. Collapsing them breaks the
