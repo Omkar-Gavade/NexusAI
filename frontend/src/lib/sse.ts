@@ -39,6 +39,15 @@ export async function* readSSE(
       }
     }
 
+    // A cancelled read resolves as `done` (Chromium does this for an aborted
+    // fetch body), which made a stopped stream indistinguishable from one the
+    // server finished. An abort is reported as an abort.
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new DOMException('The stream was aborted.', 'AbortError');
+    }
+
     const trailing = extractData(buffer);
     if (trailing !== null) yield trailing;
   } finally {

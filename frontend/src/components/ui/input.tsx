@@ -22,7 +22,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
   return (
     <div className={clsx('flex flex-col gap-1.5', className)}>
-      <label htmlFor={inputId} className="text-ui text-ink-2">
+      <label htmlFor={inputId} className="text-[13px] font-medium text-ink-2">
         {label}
       </label>
 
@@ -32,10 +32,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={clsx(
-          'h-(--control-md) w-full rounded-control border bg-canvas px-2 text-ui text-ink',
-          'placeholder:text-ink-off',
-          'transition-[border-color] duration-(--duration-instant) ease-out',
+          'h-(--control-lg) w-full rounded-control border bg-canvas px-3.5 text-ui text-ink',
+          'placeholder:text-ink-3',
+          'transition-[border-color,box-shadow] duration-(--duration-quick) ease-out',
+          // A soft glow rather than the global ring: the field already has a
+          // border, and the ring around it read as two outlines.
           'hover:border-line-strong focus-visible:border-accent',
+          'focus-visible:shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent)_20%,transparent)]',
           'disabled:bg-workspace disabled:text-ink-off',
           error ? 'border-danger' : 'border-line-control',
         )}

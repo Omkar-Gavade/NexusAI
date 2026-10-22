@@ -48,6 +48,7 @@ export function ConversationPage() {
     routing: user?.preferences.routingMode ?? 'balanced',
   }));
   const [initialDraft, setInitialDraft] = useState<string | undefined>(undefined);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   const [compareHandoff, setCompareHandoff] = useState<{ modelIds?: string[] } | null>(null);
   const [combiningMessageId, setCombiningMessageId] = useState<string | null>(null);
   const [retryingTarget, setRetryingTarget] = useState<{
@@ -195,24 +196,36 @@ export function ConversationPage() {
     [conversationId, state.conversationId, updateCachedMessage],
   );
 
-  const onRetryModel = useCallback(
-    async (assistant: Message, modelId: string) => {
+  /** Re-runs one model on a persisted turn, by id. */
+  const retryModelOn = useCallback(
+    async (messageId: string, modelId: string) => {
       const targetConvId = conversationId ?? state.conversationId;
-      if (!targetConvId) {
-        onRegenerate(assistant);
-        return;
-      }
-      setRetryingTarget({ messageId: assistant.id, modelId });
+      if (!targetConvId) return;
+      setRetryingTarget({ messageId, modelId });
       try {
-        const updated = await retryMessageModel(targetConvId, assistant.id, modelId);
+        const updated = await retryMessageModel(targetConvId, messageId, modelId);
         updateCachedMessage(updated);
+        // The turn may not be in cached history yet (retried from the live
+        // view), so history is refreshed rather than relying on the patch.
+        void client.invalidateQueries({ queryKey: messagesKey(targetConvId) });
       } catch {
         toast.error("Couldn't retry that model right now.");
       } finally {
         setRetryingTarget(null);
       }
     },
-    [conversationId, state.conversationId, onRegenerate, updateCachedMessage],
+    [conversationId, state.conversationId, updateCachedMessage, client],
+  );
+
+  const onRetryModel = useCallback(
+    async (assistant: Message, modelId: string) => {
+      if (!(conversationId ?? state.conversationId)) {
+        onRegenerate(assistant);
+        return;
+      }
+      await retryModelOn(assistant.id, modelId);
+    },
+    [conversationId, state.conversationId, onRegenerate, retryModelOn],
   );
 
   const onFollowUpAnswer = useCallback(
@@ -280,7 +293,11 @@ export function ConversationPage() {
         <div ref={scroller} className="h-full overflow-y-auto">
           <div className="mx-auto w-full max-w-(--measure-conversation) px-(--gutter) pb-8 pt-14 max-lg:px-4">
             {showEmpty ? (
-              <EmptyConversation disabled={noModels} />
+              <EmptyConversation
+                disabled={noModels}
+                name={user?.displayName}
+                onPickPrompt={(text) => setPrefill({ text, nonce: Date.now() })}
+              />
             ) : (
               <div className="flex flex-col gap-8">
                 <MessageList
@@ -306,7 +323,23 @@ export function ConversationPage() {
                       <AnswerBlock
                         view={fromStream(state, orderedSlots(state))}
                         onRegenerate={() => onSend(pending.prompt)}
-                        onRetryModel={() => onSend(pending.prompt)}
+                        onRetryModel={(modelId) => {
+                          // Retrying one model needs the persisted turn. While
+                          // the stream is open there is none to retry against,
+                          // and resending the prompt would be a different
+                          // request — so the control waits, and says why.
+                          if (inFlight) return;
+                          if (liveId) void retryModelOn(liveId, modelId);
+                          else onSend(pending.prompt);
+                        }}
+                        retryingModelId={
+                          retryingTarget && retryingTarget.messageId === liveId
+                            ? retryingTarget.modelId
+                            : null
+                        }
+                        retryDisabledReason={
+                          inFlight ? 'Available when the comparison finishes' : null
+                        }
                       />
                     )}
                   </div>
@@ -338,6 +371,7 @@ export function ConversationPage() {
             : null
         }
         initialValue={initialDraft}
+        prefill={prefill}
       />
     </>
   );

@@ -4,6 +4,8 @@ import { RouterProvider } from 'react-router';
 import { ErrorBoundary } from './app/error-boundary';
 import { Providers } from './app/providers';
 import { router } from './app/router';
+// Self-hosted Inter (variable weight); each subset loads only when used.
+import '@fontsource-variable/inter';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/markdown.css';

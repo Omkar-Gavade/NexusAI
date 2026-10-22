@@ -4,7 +4,9 @@ import {
   nullableLatency,
   nullableTokens,
 } from '@/lib/format';
+import clsx from 'clsx';
 import { ROSTER } from './model-roster';
+import { modelHue } from './spectrum';
 
 const SAMPLE_TELEMETRY = [
   {
@@ -50,7 +52,7 @@ export function PerformanceTransparency() {
   return (
     <div
       data-testid="homepage-performance-transparency"
-      className="border border-line bg-canvas p-4 md:p-5"
+      className="rounded-overlay border border-line bg-raised p-4 shadow-float md:p-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-subtle pb-3">
         <span data-register="machine" className="text-note uppercase text-ink-2">
@@ -72,7 +74,12 @@ export function PerformanceTransparency() {
               className="grid gap-3 py-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)] md:items-center"
             >
               <div>
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ backgroundImage: modelHue(row.modelId).gradient }}
+                  />
                   <span className="text-ui font-[550] text-ink">{row.displayName}</span>
                   <span data-register="machine" className="text-note uppercase text-ink-3">
                     {row.provider}
@@ -91,7 +98,18 @@ export function PerformanceTransparency() {
               >
                 <div>
                   <dt className="text-ink-3">STATUS</dt>
-                  <dd className="mt-0.5 text-ink-2">{row.status.toUpperCase()}</dd>
+                  <dd className="mt-1">
+                    <span
+                      className={clsx(
+                        'inline-block rounded-[6px] px-2 py-0.5',
+                        row.status.startsWith('Failed')
+                          ? 'bg-[rgb(245_158_11/0.16)] text-warn'
+                          : 'bg-[rgb(16_185_129/0.14)] text-ok',
+                      )}
+                    >
+                      {row.status.toUpperCase()}
+                    </span>
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-ink-3">FIRST TOKEN</dt>

@@ -18,8 +18,8 @@ export function CodeBlock({ language, code }: { language: string | null; code: s
   };
 
   return (
-    <figure className="mb-4 border border-line bg-raised">
-      <figcaption className="flex h-8 items-center justify-between border-b border-line pl-3 pr-1">
+    <figure className="mb-4 overflow-hidden rounded-card border border-line bg-workspace">
+      <figcaption className="flex h-9 items-center justify-between border-b border-line bg-raised/60 pl-3.5 pr-1.5">
         <span data-register="machine" className="text-note uppercase text-ink-3">
           {language ?? 'text'}
         </span>

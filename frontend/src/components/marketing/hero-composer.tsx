@@ -14,6 +14,7 @@ import {
 import { writeHomepageDraft } from '@/lib/homepage-draft';
 import { routes } from '@/lib/routes';
 import { ROSTER } from './model-roster';
+import { modelHue } from './spectrum';
 
 /**
  * Samples whose label is what the classifier actually returns for them —
@@ -147,7 +148,8 @@ export function HeroComposer() {
     <div
       data-testid="homepage-composer"
       className={clsx(
-        'relative border border-line bg-raised shadow-modal',
+        'relative overflow-hidden rounded-overlay border border-line bg-raised/90 shadow-modal backdrop-blur',
+        'shadow-[var(--shadow-modal-value),var(--shadow-glow-value)]',
         'transition-[border-color] duration-(--duration-quick) ease-out',
         // The prompt has no ring of its own; the instrument's frame takes it.
         'has-[#hero-prompt-input:focus-visible]:border-accent/60',
@@ -238,7 +240,7 @@ export function HeroComposer() {
             </div>
             <ol
               aria-label="Task categories"
-              className="mt-2 grid grid-cols-3 gap-px border border-line-subtle bg-line-subtle sm:grid-cols-6"
+              className="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-control border border-line-subtle bg-line-subtle sm:grid-cols-6"
             >
               {TASK_SCALE.map((task) => {
                 const active = task.id === category;
@@ -274,13 +276,19 @@ export function HeroComposer() {
                     >
                       {candidate.displayName}
                     </span>
-                    <span aria-hidden="true" className="h-1.5 overflow-hidden bg-workspace">
+                    <span aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-hover">
+                      {/* Each model in its own hue; the routed one at full
+                          strength with a glow, the rest softened. */}
                       <span
                         className={clsx(
-                          'block h-full origin-left transition-transform duration-(--duration-slow) ease-out',
-                          routed ? 'bg-accent' : 'bg-line-strong',
+                          'block h-full origin-left rounded-full transition-[transform,opacity] duration-(--duration-slow) ease-out',
+                          routed ? 'opacity-100' : 'opacity-55',
                         )}
-                        style={{ transform: `scaleX(${share.toFixed(3)})` }}
+                        style={{
+                          transform: `scaleX(${share.toFixed(3)})`,
+                          backgroundImage: modelHue(candidate.id).gradient,
+                          boxShadow: routed ? `0 0 14px rgb(${modelHue(candidate.id).rgb} / 0.7)` : undefined,
+                        }}
                       />
                     </span>
                     <span
@@ -359,7 +367,7 @@ export function HeroComposer() {
               style={{ gridTemplateColumns: `repeat(${arenaModels.length}, minmax(0, 1fr))` }}
             >
               {arenaModels.map((id, index) => (
-                <div key={id} className="border border-line-subtle bg-workspace p-2">
+                <div key={id} className="rounded-control border border-line-subtle bg-workspace p-2">
                   <div className="flex items-center gap-1.5">
                     <span data-register="machine" className="text-[10px] text-ink-3">
                       {index + 1}
@@ -390,7 +398,7 @@ export function HeroComposer() {
           </span>
           <button
             type="submit"
-            className="inline-flex h-(--control-md) items-center gap-1.5 rounded-control bg-ink px-3.5 text-ui font-[550] text-ink-inv transition-opacity duration-(--duration-instant) hover:opacity-90"
+            className="inline-flex h-(--control-md) items-center gap-1.5 rounded-control bg-brand px-4 text-ui font-semibold text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_6px_20px_-8px_rgb(99_102_241/0.6)] transition-[filter] duration-(--duration-instant) hover:brightness-110"
           >
             <span>{mode === 'compare' ? 'Compare in workspace' : 'Run in workspace'}</span>
             <ArrowRight size={14} aria-hidden="true" />

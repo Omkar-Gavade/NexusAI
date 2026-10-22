@@ -18,19 +18,21 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 const VARIANT: Record<Variant, string> = {
   // The highest-contrast option available (15.6:1 dark, 17.7:1 light) and the
   // most restrained, which keeps the accent free to mean focus and selection.
+  // The brand gradient marks the one action a screen is asking for. White on
+  // #4F46E5→#7C3AED measures 5.7–6.3:1.
   primary:
-    'bg-ink text-ink-inv hover:opacity-92 active:opacity-85 disabled:bg-hover disabled:text-ink-off disabled:opacity-100',
+    'bg-brand text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_6px_20px_-8px_rgb(99_102_241/0.6)] hover:brightness-110 active:brightness-95 disabled:bg-none disabled:bg-hover disabled:text-ink-off disabled:shadow-none',
   secondary:
-    'border border-line-control text-ink hover:bg-hover active:bg-active disabled:text-ink-off disabled:border-line',
+    'border border-line bg-raised text-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.03)] hover:border-line-strong hover:bg-hover active:bg-active disabled:text-ink-off disabled:border-line',
   ghost:
     'text-ink-2 hover:bg-hover hover:text-ink active:bg-active disabled:text-ink-off disabled:bg-transparent',
   danger: 'bg-danger text-white hover:opacity-92 active:opacity-85 disabled:opacity-50',
 };
 
 const SIZE: Record<Size, string> = {
-  sm: 'h-(--control-sm) px-2 gap-1 text-ui',
-  md: 'h-(--control-md) px-3 gap-1 text-ui',
-  lg: 'h-(--control-lg) px-4 gap-2 text-ui',
+  sm: 'h-(--control-sm) px-2.5 gap-1 text-[13px]',
+  md: 'h-(--control-md) px-3.5 gap-1.5 text-ui',
+  lg: 'h-(--control-lg) px-5 gap-2 text-ui',
 };
 
 /**
@@ -51,8 +53,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={clsx(
         'relative inline-flex shrink-0 items-center justify-center rounded-control',
         'font-human whitespace-nowrap select-none',
-        'transition-[background-color,opacity,color] duration-(--duration-instant) ease-out',
-        variant === 'primary' && 'font-[550]',
+        'transition-[background-color,border-color,color,filter,box-shadow] duration-(--duration-instant) ease-out',
+        'font-medium',
+        variant === 'primary' && 'font-semibold',
         VARIANT[variant],
         SIZE[size],
         className,

@@ -74,16 +74,18 @@ export function ConversationItem({ conversation }: { conversation: Conversation 
         }}
         className={({ isActive }) =>
           clsx(
-            'relative flex h-7 items-center rounded-control pl-2.5 pr-7 max-lg:h-11',
-            'text-nav transition-colors duration-(--duration-instant)',
-            isActive ? 'bg-selected font-[550] text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink',
+            'relative flex h-9 items-center rounded-control pl-3 pr-8 max-lg:h-11',
+            'text-ui transition-colors duration-(--duration-instant)',
+            isActive
+              ? 'bg-selected font-medium text-ink shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_22%,transparent)]'
+              : 'text-ink-2 hover:bg-hover hover:text-ink',
           )
         }
       >
         {({ isActive }) => (
           <>
             {isActive && (
-              <span aria-hidden="true" className="absolute inset-y-1 left-0 w-0.5 bg-accent" />
+              <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-brand" />
             )}
             <span className="truncate">{conversation.title}</span>
           </>

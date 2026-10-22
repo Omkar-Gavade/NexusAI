@@ -10,7 +10,7 @@
 export function UserMessage({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[min(85%,34rem)] rounded-control bg-raised px-3.5 py-2.5 text-body whitespace-pre-wrap max-lg:max-w-[90%]">
+      <div className="max-w-[min(85%,36rem)] rounded-[18px] rounded-br-md border border-accent/15 bg-accent-quiet px-4 py-2.5 text-body whitespace-pre-wrap text-ink shadow-float max-lg:max-w-[90%]">
         {content}
       </div>
     </div>

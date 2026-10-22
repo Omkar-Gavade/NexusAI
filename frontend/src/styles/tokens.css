@@ -12,97 +12,141 @@
    aliases to maintain for theming flexibility nothing asks for.
    =========================================================================== */
 
-/* --- Dark: the primary theme, designed first ----------------------------- */
+/* --- Dark: the primary theme, designed first -----------------------------
+   Cool near-black with layered depth and one brand signal (indigo → violet).
+   Every text and signal colour below clears WCAG AA on every surface it can
+   sit on; `tokens.test.ts` measures it from this file.
+   ------------------------------------------------------------------------ */
 :root,
 [data-theme='dark'] {
-  --surface-canvas: #131211;
-  --surface-workspace: #191817;
-  --surface-raised: #1f1d1b;
-  --surface-floating: #262421;
-  --surface-hover: #232120;
-  --surface-active: #2b2825;
-  --surface-selected: #16211f;
+  --surface-canvas: #0a0a0f;
+  --surface-workspace: #0e0e15;
+  --surface-raised: #13131c;
+  --surface-floating: #191924;
+  --surface-hover: #1c1c29;
+  --surface-active: #232333;
+  --surface-selected: #1a1a38;
 
-  --border-subtle: #242220;
-  --border-default: #332f2b;
-  --border-strong: #4a453f;
-  --border-control: #787067;
+  --border-subtle: #1d1d2a;
+  --border-default: #262636;
+  --border-strong: #383850;
+  --border-control: #6e6e88;
 
-  --text-primary: #edeae5;
-  --text-secondary: #aba49b;
-  --text-tertiary: #98938c;
-  --text-disabled: #6e6860;
-  --text-inverse: #131211;
+  --text-primary: #f4f4f7;
+  --text-secondary: #b6b6c8;
+  --text-tertiary: #9090a8;
+  --text-disabled: #62627a;
+  --text-inverse: #0a0a0f;
 
-  --accent: #5fb3a8;
-  --accent-strong: #7fc9bf;
-  --accent-quiet: #16211f;
+  --accent: #9b9cff;
+  --accent-strong: #b9baff;
+  --accent-quiet: #17173a;
 
-  --status-success: #7fb356;
-  --status-success-quiet: #16200f;
-  --status-warning: #d9a441;
-  --status-warning-quiet: #241c0d;
-  --status-danger: #e8736a;
-  --status-danger-quiet: #26140f;
+  --status-success: #4ade80;
+  --status-success-quiet: #0d2318;
+  --status-warning: #fbbf24;
+  --status-warning-quiet: #2a1f07;
+  --status-danger: #f87171;
+  --status-danger-quiet: #2c1214;
 
-  --shadow-float-value: 0 2px 8px -2px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
-  --shadow-modal-value: 0 12px 32px -8px rgb(0 0 0 / 0.36), 0 2px 8px -4px rgb(0 0 0 / 0.2);
-  --scrim: rgb(0 0 0 / 0.5);
+  /* The brand: primary actions, the mark, and selection — never wallpaper. */
+  --brand-from: #4f46e5;
+  --brand-to: #7c3aed;
+  --brand-gradient: linear-gradient(135deg, var(--brand-from), var(--brand-to));
+  --brand-text-gradient: linear-gradient(100deg, #c7c8ff 0%, #a5a6ff 40%, #c4a7ff 100%);
+  --ambient-glow: radial-gradient(60% 50% at 50% 0%, rgb(99 102 241 / 0.16), transparent 70%);
+  /* Aurora strength: how much colour the marketing mesh carries on this canvas. */
+  --aurora-a: 0.4;
+  --aurora-b: 0.3;
+  --tint: 0.12;
+
+  --shadow-float-value: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.7),
+    0 2px 6px -2px rgb(0 0 0 / 0.5);
+  --shadow-modal-value: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 24px 64px -16px rgb(0 0 0 / 0.75),
+    0 4px 16px -4px rgb(0 0 0 / 0.5);
+  --shadow-glow-value: 0 0 0 1px rgb(129 140 248 / 0.28), 0 12px 40px -12px rgb(99 102 241 / 0.55);
+  --scrim: rgb(5 5 10 / 0.6);
 
   color-scheme: dark;
 }
 
 /* --- Light: designed independently, not inverted -------------------------
-   Three structural differences from dark, each a consequence of how light
-   behaves rather than a mechanical flip:
-   1. Chrome is DARKER than the canvas here and LIGHTER in dark mode. In both
-      cases chrome recedes and content advances — opposite implementations of
-      the same goal.
-   2. The floating layer runs out of headroom: raised is already near-white, so
-      floating separates by shadow and border with only a 1.025:1 tonal step.
-   3. Accent and status hues are re-picked, not lightened. #5FB3A8 reads 7.57:1
-      on near-black and 1.9:1 on near-white.
+   Chrome is darker than the canvas here and lighter in dark mode; in both,
+   chrome recedes and content advances. Signal hues are re-picked for white.
    ------------------------------------------------------------------------ */
 [data-theme='light'] {
-  --surface-canvas: #fbfaf8;
-  --surface-workspace: #f4f2ee;
-  --surface-raised: #fdfcfa;
+  --surface-canvas: #fcfcfd;
+  --surface-workspace: #f4f4f8;
+  --surface-raised: #fdfdfe;
   --surface-floating: #ffffff;
-  --surface-hover: #edeae4;
-  --surface-active: #e4e0d9;
-  --surface-selected: #e7f0ee;
+  --surface-hover: #eeeef4;
+  --surface-active: #e5e5ee;
+  --surface-selected: #eeeeff;
 
-  --border-subtle: #e9e5de;
-  --border-default: #dad5cc;
-  --border-strong: #bdb6ab;
-  --border-control: #807a72;
+  --border-subtle: #ececf2;
+  --border-default: #e1e1ea;
+  --border-strong: #c8c8d6;
+  --border-control: #85859b;
 
-  --text-primary: #1a1816;
-  --text-secondary: #5b554d;
-  --text-tertiary: #696259;
-  --text-disabled: #948d86;
-  --text-inverse: #fbfaf8;
+  --text-primary: #0b0b12;
+  --text-secondary: #45455a;
+  --text-tertiary: #5a5a70;
+  --text-disabled: #8a8aa0;
+  --text-inverse: #fcfcfd;
 
-  --accent: #206a63;
-  --accent-strong: #17544e;
-  --accent-quiet: #e7f0ee;
+  --accent: #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-quiet: #eeeeff;
 
-  --status-success: #42691d;
-  --status-success-quiet: #eef3e6;
-  --status-warning: #8a6216;
-  --status-warning-quiet: #f8f1e2;
-  --status-danger: #b93b33;
-  --status-danger-quiet: #fbecea;
+  --status-success: #11723a;
+  --status-success-quiet: #ecf7f0;
+  --status-warning: #8a5a06;
+  --status-warning-quiet: #fbf3e2;
+  --status-danger: #c81e1e;
+  --status-danger-quiet: #fdeeee;
 
-  --shadow-float-value: 0 2px 8px -2px rgb(0 0 0 / 0.1), 0 1px 2px rgb(0 0 0 / 0.06);
-  --shadow-modal-value: 0 12px 32px -8px rgb(0 0 0 / 0.14), 0 2px 8px -4px rgb(0 0 0 / 0.07);
-  --scrim: rgb(26 24 22 / 0.32);
+  --brand-from: #4f46e5;
+  --brand-to: #7c3aed;
+  --brand-gradient: linear-gradient(135deg, var(--brand-from), var(--brand-to));
+  --brand-text-gradient: linear-gradient(100deg, #4338ca 0%, #5b4ee8 45%, #7c3aed 100%);
+  --ambient-glow: radial-gradient(60% 50% at 50% 0%, rgb(99 102 241 / 0.1), transparent 70%);
+  --aurora-a: 0.26;
+  --aurora-b: 0.18;
+  --tint: 0.07;
+
+  --shadow-float-value: 0 1px 2px rgb(16 16 40 / 0.06), 0 8px 24px -12px rgb(16 16 40 / 0.18);
+  --shadow-modal-value: 0 2px 6px rgb(16 16 40 / 0.06), 0 24px 64px -16px rgb(16 16 40 / 0.28);
+  --shadow-glow-value: 0 0 0 1px rgb(79 70 229 / 0.22), 0 12px 32px -12px rgb(79 70 229 / 0.35);
+  --scrim: rgb(16 16 30 / 0.32);
 
   color-scheme: light;
 }
 
 /* --- Layout, motion and stacking: theme-independent ---------------------- */
 :root {
+  /* The spectrum. NexusAI is many models, so the marketing surface gives each
+     feature (and each model in an illustration) its own hue instead of one
+     accent for everything. Used for fills, icons and glows — text that must be
+     read sits on top in white or in the theme's ink, never in these. */
+  --hue-indigo: #6366f1;
+  --hue-violet: #8b5cf6;
+  --hue-fuchsia: #d946ef;
+  --hue-rose: #f43f5e;
+  --hue-amber: #f59e0b;
+  --hue-emerald: #10b981;
+  --hue-cyan: #06b6d4;
+  --hue-blue: #3b82f6;
+  /* The hue a marketing card glows in, as an rgb triplet. Each card sets its
+     own inline; this default (violet) keeps the glow resolving without one. */
+  --card-rgb: 139 92 246;
+  --spectrum: linear-gradient(
+    100deg,
+    var(--hue-indigo),
+    var(--hue-violet) 30%,
+    var(--hue-fuchsia) 60%,
+    var(--hue-amber)
+  );
+
   --measure-answer: 68ch;
   --measure-wide: 84ch;
   /* The conversation column. Wider than the answer measure on purpose: the
@@ -123,19 +167,19 @@
   --rail-width: 2px;
   --rail-gutter: 20px;
   --gutter: 24px;
-  --header-height: 44px;
+  --header-height: 52px;
 
   /* Control scale. Shared by Button, IconButton and the marketing CTA. */
-  --control-sm: 26px;
-  --control-md: 30px;
-  --control-lg: 38px;
+  --control-sm: 28px;
+  --control-md: 34px;
+  --control-lg: 42px;
   --composer-min-height: 48px;
   --composer-max-height: 216px;
 
-  --duration-instant: 100ms;
-  --duration-quick: 140ms;
-  --duration-normal: 180ms;
-  --duration-slow: 220ms;
+  --duration-instant: 120ms;
+  --duration-quick: 160ms;
+  --duration-normal: 220ms;
+  --duration-slow: 300ms;
 
   --z-sticky: 10;
   --z-scrim: 40;
@@ -145,6 +189,7 @@
   --z-toast: 90;
 
   --focus-ring: 0 0 0 2px var(--surface-canvas), 0 0 0 4px var(--accent);
+  --header-blur: saturate(160%) blur(14px);
 }
 
 /* --- Tailwind theme mapping ---------------------------------------------
@@ -184,17 +229,17 @@
   --color-danger-quiet: var(--status-danger-quiet);
 
   /* Two families, two semantic registers. Human wrote it, or a model wrote it:
-     Instrument Sans. The system measured it: IBM Plex Mono. */
+     Inter. The system measured it: IBM Plex Mono. */
   --font-human:
-    'Instrument Sans', 'Instrument Sans Fallback', ui-sans-serif, -apple-system,
-    BlinkMacSystemFont, system-ui, sans-serif;
+    'Inter Variable', 'Inter Fallback', ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    system-ui, sans-serif;
   --font-machine:
     'IBM Plex Mono', 'IBM Plex Mono Fallback', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --text-note: 11px;
   --text-note--line-height: 16px;
   --text-note--font-weight: 500;
-  --text-note--letter-spacing: 0.08em;
+  --text-note--letter-spacing: 0.06em;
 
   --text-meta: 12px;
   --text-meta--line-height: 18px;
@@ -203,7 +248,7 @@
   --text-micro: 12px;
   --text-micro--line-height: 18px;
 
-  --text-ui: 13px;
+  --text-ui: 14px;
   --text-ui--line-height: 20px;
 
   /* Navigation text. One step above UI chrome, for the sidebar only.
@@ -224,13 +269,13 @@
   --text-title--line-height: 26px;
   --text-title--letter-spacing: -0.01em;
 
-  --text-section: 21px;
+  --text-section: 22px;
   --text-section--line-height: 30px;
-  --text-section--letter-spacing: -0.015em;
+  --text-section--letter-spacing: -0.02em;
 
-  --text-display: 25px;
-  --text-display--line-height: 34px;
-  --text-display--letter-spacing: -0.02em;
+  --text-display: 28px;
+  --text-display--line-height: 36px;
+  --text-display--letter-spacing: -0.025em;
 
   /* Marketing only. The workspace ceiling is --text-display: a landing headline
      needs more presence than any in-product text, and that is the single
@@ -239,20 +284,22 @@
      like a document heading, and hold a 360px one without breaking mid-word.
      One token rather than a stack of breakpoint overrides, so the exception
      stays a single decision. */
-  --text-hero: clamp(34px, 1.6rem + 2.4vw, 58px);
-  --text-hero--line-height: 1.06;
-  --text-hero--letter-spacing: -0.03em;
+  --text-hero: clamp(38px, 1.6rem + 3vw, 68px);
+  --text-hero--line-height: 1.02;
+  --text-hero--letter-spacing: -0.04em;
 
   /* Radius encodes interactivity: structure is square, controls are rounded.
      Ceiling is 8px — nothing in NexusAI is 12, 16, 20 or 24px round. */
-  --radius-mark: 3px;
-  --radius-control: 5px;
-  --radius-overlay: 8px;
+  --radius-mark: 6px;
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --radius-overlay: 16px;
 
   --shadow-float: var(--shadow-float-value);
   --shadow-modal: var(--shadow-modal-value);
+  --shadow-glow: var(--shadow-glow-value);
 
-  --ease-out: cubic-bezier(0.2, 0, 0.15, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-expand: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -260,4 +307,46 @@
   --breakpoint-md: 768px;
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1280px;
+}
+
+/* --- Brand utilities --------------------------------------------------- */
+@utility bg-brand {
+  background-image: var(--brand-gradient);
+}
+
+@utility text-brand-gradient {
+  background-image: var(--brand-text-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility bg-ambient {
+  background-image: var(--ambient-glow);
+}
+
+@utility glass {
+  background-color: color-mix(in oklab, var(--surface-canvas) 72%, transparent);
+  -webkit-backdrop-filter: var(--header-blur);
+  backdrop-filter: var(--header-blur);
+}
+
+@utility text-spectrum {
+  background-image: var(--spectrum);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility bg-spectrum {
+  background-image: var(--spectrum);
+}
+
+/* A static aurora: four soft fields of the spectrum. Strength is per theme. */
+@utility bg-aurora {
+  background-image:
+    radial-gradient(40% 55% at 18% 22%, rgb(99 102 241 / var(--aurora-a)), transparent 70%),
+    radial-gradient(35% 45% at 82% 18%, rgb(217 70 239 / var(--aurora-b)), transparent 70%),
+    radial-gradient(40% 50% at 70% 85%, rgb(6 182 212 / var(--aurora-b)), transparent 70%),
+    radial-gradient(30% 40% at 30% 90%, rgb(245 158 11 / calc(var(--aurora-b) * 0.7)), transparent 70%);
 }

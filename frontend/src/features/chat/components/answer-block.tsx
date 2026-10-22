@@ -1,6 +1,18 @@
 import { useId, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronRight, Columns2, Copy, Layers, RotateCcw, Sparkles, UserRound } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Columns2,
+  Copy,
+  Gauge,
+  Layers,
+  Link2,
+  RotateCcw,
+  Sparkles,
+  UserRound,
+} from 'lucide-react';
+import { Logo } from '@/components/ui/logo';
 import { getModelPricing } from '@nexusai/contracts';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -39,6 +51,7 @@ export function AnswerBlock({
   onFollowUpAnswer,
   combining = false,
   retryingModelId = null,
+  retryDisabledReason = null,
 }: {
   view: AnswerView;
   onRegenerate: () => void;
@@ -48,6 +61,7 @@ export function AnswerBlock({
   onFollowUpAnswer?: ((modelId: string, displayName: string) => void) | undefined;
   combining?: boolean;
   retryingModelId?: string | null;
+  retryDisabledReason?: string | null;
 }) {
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -121,6 +135,8 @@ export function AnswerBlock({
       )}
       aria-busy={streaming || undefined}
     >
+      <AssistantHeader view={view} />
+
       {view.routingDecision && (
         <RoutingLine
           decision={view.routingDecision}
@@ -201,6 +217,7 @@ export function AnswerBlock({
                   index={index}
                   arenaMode
                   retrying={retryingModelId === slot.model.modelId}
+                  retryDisabledReason={retryDisabledReason}
                   selected={view.selectedModelId === slot.model.modelId}
                   onSelect={
                     onSelectAnswer
@@ -324,7 +341,7 @@ export function AnswerBlock({
       {!streaming && ( (!isCompare && multiModel) || view.sources.length > 0 || slots.length > 0) && (
         <div
           className={clsx(
-            'flex flex-col gap-1',
+            'flex flex-wrap items-center gap-2 pt-1',
             !isCompare && 'lg:pl-[calc(var(--rail-width)+var(--rail-gutter))]',
           )}
         >
@@ -332,7 +349,8 @@ export function AnswerBlock({
             <Disclosure
               id={sourcesId}
               action={`sources for this answer (${view.sources.length})`}
-              label={`SOURCES · ${view.sources.length}`}
+              label={`Sources · ${view.sources.length}`}
+              icon={<Link2 size={13} aria-hidden="true" />}
               open={sourcesOpen}
               onToggle={() => setSourcesOpen((open) => !open)}
             >
@@ -344,7 +362,8 @@ export function AnswerBlock({
             <Disclosure
               id={comparisonId}
               action="the model-by-model comparison"
-              label="COMPARISON"
+              label="Compare models"
+              icon={<Columns2 size={13} aria-hidden="true" />}
               open={comparisonOpen}
               onToggle={() => setComparisonOpen((open) => !open)}
             >
@@ -355,6 +374,7 @@ export function AnswerBlock({
                       slot={slot}
                       index={index}
                       retrying={retryingModelId === slot.model.modelId}
+                      retryDisabledReason={retryDisabledReason}
                       selected={view.selectedModelId === slot.model.modelId}
                       onSelect={
                         onSelectAnswer
@@ -377,7 +397,8 @@ export function AnswerBlock({
             <Disclosure
               id={perfId}
               action="performance and cost details"
-              label="PERFORMANCE & COST"
+              label="Performance & cost"
+              icon={<Gauge size={13} aria-hidden="true" />}
               open={perfOpen}
               onToggle={() => setPerfOpen((open) => !open)}
             >
@@ -472,6 +493,7 @@ function OrchestrationStatus({ slots }: { slots: ModelSlot[] }) {
 function Disclosure({
   id,
   label,
+  icon,
   action,
   open,
   onToggle,
@@ -479,6 +501,7 @@ function Disclosure({
 }: {
   id: string;
   label: string;
+  icon: ReactNode;
   /** Completes "Show …" / "Hide …" so the control says what it does. */
   action: string;
   open: boolean;
@@ -486,41 +509,45 @@ function Disclosure({
   children: ReactNode;
 }) {
   return (
-    <div>
+    // `contents`: the toggle sits in the parent's row of pills, and the panel
+    // is ordered after all of them at full width, so opening one never pushes
+    // the other toggles out of line.
+    <div className="contents">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
         aria-controls={id}
         aria-label={`${open ? 'Hide' : 'Show'} ${action}`}
-        className="flex w-full items-center py-1 text-left"
+        className={clsx(
+          'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium',
+          'transition-[background-color,border-color,color] duration-(--duration-instant) ease-out',
+          open
+            ? 'border-accent/40 bg-accent-quiet text-ink'
+            : 'border-line bg-raised/60 text-ink-2 hover:border-line-strong hover:text-ink',
+        )}
       >
-        <Rule
-          decorative
-          label={label}
-          className="flex-1"
-          trailing={
-            <ChevronRight
-              size={13}
-              aria-hidden="true"
-              className={clsx(
-                'shrink-0 text-ink-3 transition-transform duration-(--duration-instant)',
-                open && 'rotate-90',
-              )}
-            />
-          }
+        <span className={open ? 'text-accent' : 'text-ink-3'}>{icon}</span>
+        {label}
+        <ChevronDown
+          size={13}
+          aria-hidden="true"
+          className={clsx(
+            'shrink-0 text-ink-3 transition-transform duration-(--duration-quick)',
+            open && 'rotate-180',
+          )}
         />
       </button>
 
       <div
         id={id}
         className={clsx(
-          'grid transition-[grid-template-rows] duration-(--duration-normal) ease-expand',
+          'order-last grid basis-full transition-[grid-template-rows] duration-(--duration-normal) ease-expand',
           open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
         )}
       >
         <div className="overflow-hidden">
-          <div className="pt-3">{children}</div>
+          <div className="pt-1">{children}</div>
         </div>
       </div>
     </div>
@@ -635,6 +662,41 @@ function Metadata({
 }
 
 /**
+ * Who is answering — the anchor every turn starts from — and, while it is
+ * still being produced, that it is.
+ */
+function AssistantHeader({ view }: { view: AnswerView }) {
+  // Only the live state. How a finished answer was produced is stated once,
+  // in the metadata line below it — saying it here too was the same fact twice.
+  const status = view.streaming ? (
+    <span className="inline-flex items-center gap-1.5 text-accent">
+      <span className="flex gap-0.5" aria-hidden="true">
+        {[0, 1, 2].map((dot) => (
+          <span
+            key={dot}
+            className="size-1 rounded-full bg-current motion-safe:animate-[nx-dot_1.2s_ease-in-out_infinite]"
+            style={{ animationDelay: `${dot * 160}ms` }}
+          />
+        ))}
+      </span>
+      {view.text.length > 0 || view.slots.some((s) => s.text.length > 0) ? 'Writing' : 'Thinking'}
+    </span>
+  ) : null;
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <Logo size={26} className="rounded-[7px]" />
+      <span className="text-ui font-semibold text-ink">NexusAI</span>
+      {status && (
+        <span className="rounded-full border border-accent/25 bg-accent-quiet px-2.5 py-0.5 text-[12px] font-medium">
+          {status}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
  * How the router decided, in one line, from the decision the server recorded.
  *
  * The category is a chip because it is the classifier's output — a value, not
@@ -700,7 +762,7 @@ function PerformanceDetails({ view }: { view: AnswerView }) {
   return (
     <div
       data-testid="performance-cost-panel"
-      className="flex flex-col gap-4 border border-line bg-raised p-3.5"
+      className="flex flex-col gap-4 rounded-card border border-line bg-raised p-4 shadow-float"
     >
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-5">
         <Figure label="FIRST TOKEN" value={nullableLatency(view.firstTokenMs)} hint="Until the first text you saw" />

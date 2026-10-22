@@ -19,8 +19,9 @@ export interface IconButtonProps
 
 const VARIANT: Record<Variant, string> = {
   ghost: 'text-ink-3 hover:bg-hover hover:text-ink active:bg-active',
-  secondary: 'border border-line-control text-ink-2 hover:bg-hover hover:text-ink',
-  primary: 'bg-ink text-ink-inv hover:opacity-92',
+  secondary: 'border border-line bg-raised text-ink-2 hover:border-line-strong hover:bg-hover hover:text-ink',
+  primary:
+    'bg-brand text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.2),0_6px_18px_-6px_rgb(99_102_241/0.65)] hover:brightness-110 disabled:bg-none disabled:bg-hover disabled:shadow-none',
 };
 
 const SIZE: Record<Size, string> = {
@@ -43,7 +44,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       disabled={props.disabled ?? loading}
       className={clsx(
         'relative inline-grid shrink-0 place-items-center rounded-full',
-        'transition-[background-color,color,opacity] duration-(--duration-instant) ease-out',
+        'transition-[background-color,color,opacity,filter] duration-(--duration-instant) ease-out',
         'disabled:text-ink-off disabled:hover:bg-transparent',
         // Below the desktop breakpoint the hit area grows to the 44px touch
         // minimum while the visual box stays 30px, so layout is unaffected.

@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
-import { Rule } from '@/components/ui/rule';
+import { Eyebrow } from './eyebrow';
 import { Reveal } from './reveal';
 
 /**
@@ -19,6 +19,7 @@ export function Section({
   children,
   surface = 'canvas',
   layout = 'stacked',
+  glow,
   className,
 }: {
   id?: string;
@@ -44,6 +45,8 @@ export function Section({
    * content — for a section whose demonstration needs the whole measure.
    */
   layout?: 'stacked' | 'split' | 'columns';
+  /** An rgb triplet: the section's hue, as a soft field behind its heading. */
+  glow?: string;
   className?: string;
 }) {
   return (
@@ -54,11 +57,18 @@ export function Section({
         // 5rem` on the root for exactly this — clearing the 57px sticky bar on
         // an anchor jump — and the two stacked: a jumped-to section landed
         // 144px down the viewport, most of it empty, instead of 80.
-        'border-t border-line-subtle',
+        'relative isolate overflow-hidden border-t border-line-subtle',
         surface === 'raised' ? 'bg-workspace' : 'bg-canvas',
         className,
       )}
     >
+      {glow && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-40 left-[-10%] -z-10 h-[520px] w-[70%] rounded-full opacity-[var(--glow-strength,1)]"
+          style={{ backgroundImage: `radial-gradient(closest-side, rgb(${glow} / calc(var(--tint) * 1.6)), transparent)` }}
+        />
+      )}
       <MarketingContainer>
         <div
           className={clsx(
@@ -68,7 +78,7 @@ export function Section({
           )}
         >
           <Reveal className={clsx(layout === 'split' && 'md:sticky md:top-24 md:self-start')}>
-            {label && <Rule label={label} className="mb-8" />}
+            {label && <Eyebrow label={label} className="mb-5" />}
 
             <div
               className={clsx(
@@ -77,7 +87,7 @@ export function Section({
               )}
             >
               {title && (
-                <h2 className="max-w-[24ch] text-section font-[550] text-ink md:text-display">
+                <h2 className="max-w-[22ch] text-[28px] font-semibold leading-[1.12] tracking-[-0.035em] text-ink md:text-[40px]">
                   {title}
                 </h2>
               )}

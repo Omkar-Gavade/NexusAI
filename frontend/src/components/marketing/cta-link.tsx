@@ -34,15 +34,15 @@ export function CtaLink({
   className?: string;
 }) {
   const classes = clsx(
-    'inline-flex shrink-0 items-center justify-center rounded-control text-ui',
-    'transition-[background-color,opacity,color] duration-(--duration-instant) ease-out',
+    'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control text-ui',
+    'transition-[background-color,border-color,color,filter] duration-(--duration-instant) ease-out',
     // `md` is 30px, which is under the 44px touch minimum the release
     // checklist sets below 1024px. `IconButton` solves this with a `before:`
     // hit area; a link with a visible fill cannot, so it grows instead.
-    size === 'lg' ? 'h-(--control-lg) px-4' : 'h-(--control-md) px-3 max-lg:min-h-11',
+    size === 'lg' ? 'h-(--control-lg) px-5' : 'h-(--control-md) px-3.5 max-lg:min-h-11',
     variant === 'primary'
-      ? 'bg-ink font-[550] text-ink-inv hover:opacity-92'
-      : 'border border-line-control text-ink hover:bg-hover',
+      ? 'bg-brand font-semibold text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_8px_24px_-8px_rgb(99_102_241/0.6)] hover:brightness-110'
+      : 'border border-line bg-raised/60 font-medium text-ink hover:border-line-strong hover:bg-hover',
     className,
   );
 

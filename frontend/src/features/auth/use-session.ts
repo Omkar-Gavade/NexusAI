@@ -16,6 +16,11 @@ export function useSession() {
     queryKey: sessionKey,
     queryFn: api.me,
     retry: false,
+    // Signed out is an answer, not a failure to retry. Without this every
+    // component that reads the session re-asked on mount — four 401s, and
+    // four console errors, on every signed-out page load. Window focus and
+    // sign-in still refresh it.
+    retryOnMount: false,
     staleTime: 5 * 60_000,
     select: (data) => data.user,
   });

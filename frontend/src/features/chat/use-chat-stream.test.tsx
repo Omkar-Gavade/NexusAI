@@ -119,3 +119,37 @@ describe('useChatStream — a stream that ends without a terminal frame', () => 
     expect(callbacks.onSettled).toHaveBeenCalledWith('c');
   });
 });
+
+describe('useChatStream — Stop', () => {
+  it('leaves the streaming state when stopped, even if the aborted body simply ends', async () => {
+    vi.mocked(api.openChatStream).mockImplementation(async function* (_body, signal) {
+      yield { type: 'start', conversationId: 'c', messageId: 'm-3', plan: [model], mode: 'manual' };
+      yield { type: 'delta', text: 'partial ' };
+      // What Chromium does: the cancelled reader resolves `done`, so the
+      // generator returns normally instead of throwing.
+      await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()));
+    });
+
+    const callbacks = { onConversationCreated: vi.fn(), onSettled: vi.fn() };
+    const { result } = renderHook(() => useChatStream(callbacks));
+
+    let sending: Promise<void> | undefined;
+    act(() => {
+      sending = result.current.send({
+        conversationId: 'c',
+        prompt: 'q',
+        selection: { mode: 'manual', modelId: 'gpt-4o' },
+      });
+    });
+    await waitFor(() => expect(result.current.streaming).toBe(true));
+
+    act(() => result.current.stop());
+    await act(async () => {
+      await sending;
+    });
+
+    expect(result.current.state.phase).toBe('cancelled');
+    expect(result.current.streaming).toBe(false);
+    expect(result.current.active).toBe(false);
+  });
+});

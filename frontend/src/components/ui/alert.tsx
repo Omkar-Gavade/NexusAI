@@ -32,7 +32,7 @@ export function Alert({
   return (
     <div
       role={tone === 'danger' ? 'alert' : 'status'}
-      className={clsx('flex gap-2.5 border p-3', cls)}
+      className={clsx('flex gap-2.5 rounded-card border p-3.5', cls)}
     >
       <Icon size={15} aria-hidden="true" className="mt-px shrink-0" />
       <div className="min-w-0 flex-1">

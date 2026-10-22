@@ -7,15 +7,8 @@
    a third-party font host is an uncontrolled dependency on the render path.
    Latin subsets only — 40KB for both families. */
 
-/* Variable: one file spans the whole 400-700 range we use. */
-@font-face {
-  font-family: 'Instrument Sans';
-  src: url('/fonts/instrument-sans-latin.woff2') format('woff2');
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+2122, U+2212;
-}
+/* Inter Variable is bundled from `@fontsource-variable/inter` (imported in
+   main.tsx), so it is self-hosted and cached with the app — no font CDN. */
 
 /* Static. Only 400 ships: the machine register is a notation, never bold. */
 @font-face {
@@ -31,11 +24,11 @@
    column when the real face lands; overriding the fallback's metrics to match
    keeps that swap invisible and holds CLS at zero. */
 @font-face {
-  font-family: 'Instrument Sans Fallback';
-  src: local('Helvetica Neue'), local('Arial'), local('Segoe UI');
-  size-adjust: 101%;
-  ascent-override: 95%;
-  descent-override: 24%;
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('Helvetica Neue'), local('Segoe UI');
+  size-adjust: 107.12%;
+  ascent-override: 90.44%;
+  descent-override: 22.52%;
   line-gap-override: 0%;
 }
 
@@ -102,8 +95,11 @@
     min-height: 100dvh;
     background-color: var(--surface-canvas);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 20px;
+    /* Inter's alternates: single-storey-free `a` stays, but the disambiguated
+       digits and the open `l` make model names and numbers easier to read. */
+    font-feature-settings: 'cv01', 'cv11', 'ss03';
     font-synthesis-weight: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -391,6 +387,20 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* The "thinking" dots beside the assistant's name. */
+@keyframes nx-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
   }
 }
 

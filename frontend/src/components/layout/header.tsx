@@ -30,7 +30,7 @@ export function Header({
   const navigate = useNavigate();
 
   return (
-    <header className="flex h-(--header-height) shrink-0 items-center gap-1.5 border-b border-line px-2.5">
+    <header className="glass sticky top-0 z-(--z-sticky) flex h-(--header-height) shrink-0 items-center gap-1.5 border-b border-line-subtle px-3">
       <IconButton
         label="Open navigation"
         icon={<MenuIcon size={16} aria-hidden="true" />}
@@ -47,7 +47,7 @@ export function Header({
         />
       )}
 
-      <h2 className="min-w-0 flex-1 truncate text-ui text-ink-2">{title}</h2>
+      <h2 className="min-w-0 flex-1 truncate text-ui font-medium text-ink">{title}</h2>
 
       {conversationId && (
         <Menu
@@ -144,7 +144,7 @@ function AccountMenu() {
           {...props}
           type="button"
           aria-label={user ? `Account: ${user.displayName}` : 'Account'}
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-raised text-meta text-ink-2 transition-colors duration-(--duration-instant) hover:bg-hover hover:text-ink"
+          className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-[13px] font-semibold text-white ring-2 ring-transparent transition-[box-shadow] duration-(--duration-instant) hover:ring-accent/40"
         >
           {user?.displayName.charAt(0).toUpperCase() ?? '\u2014'}
         </button>

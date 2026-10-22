@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@/test/render';
-import { EmptyConversation } from './empty-conversation';
+import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { render, screen, within } from '@/test/render';
+import { EmptyConversation, STARTERS } from './empty-conversation';
 
 describe('EmptyConversation', () => {
   it('invites a question without re-pitching the product', () => {
@@ -11,16 +12,31 @@ describe('EmptyConversation', () => {
   });
 
   /*
-   * Categories, not prompts, and not buttons. "Review some code" typed into
-   * the composer and sent produces nothing useful, so a clickable one would be
-   * an affordance that punishes whoever trusts it.
+   * A starter is a complete prompt, and picking one only fills the composer.
+   * The earlier concern stands: a bare category like "Review some code", sent
+   * as-is, wastes a request. So nothing is sent on the reader's behalf, and
+   * every starter carries enough of a question to be worth editing.
    */
-  it('shows what the product is for without offering a fake affordance', () => {
-    const { container } = render(<EmptyConversation disabled={false} />);
+  it('offers starters that fill the composer with a complete prompt, never sending', async () => {
+    const onPickPrompt = vi.fn();
+    render(<EmptyConversation disabled={false} onPickPrompt={onPickPrompt} />);
 
-    expect(container.textContent).toMatch(/compare two technologies/i);
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    const starters = within(screen.getByRole('list', { name: /ways to start/i })).getAllByRole(
+      'button',
+    );
+    expect(starters).toHaveLength(STARTERS.length);
     expect(screen.queryAllByRole('link')).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole('button', { name: /compare two technologies/i }));
+    expect(onPickPrompt).toHaveBeenCalledTimes(1);
+    expect(onPickPrompt).toHaveBeenCalledWith(STARTERS[0].prompt);
+
+    for (const starter of STARTERS) expect(starter.prompt.trim().length).toBeGreaterThan(40);
+  });
+
+  it('offers no starters when nothing can answer', () => {
+    render(<EmptyConversation disabled />);
+    expect(screen.queryByRole('list', { name: /ways to start/i })).toBeNull();
   });
 
   /*

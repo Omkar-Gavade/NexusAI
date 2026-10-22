@@ -1,3 +1,6 @@
+import type { CSSProperties } from 'react';
+import { modelHue } from './spectrum';
+
 /**
  * The models the product is built around.
  *
@@ -38,18 +41,55 @@ export const ROSTER = [
   { provider: 'Groq', model: 'GPT-OSS 120B' },
 ] as const;
 
+/**
+ * Catalog ids in ROSTER order. Kept beside the names, and checked against the
+ * catalog by the same test, so a model's hue on the page follows its id.
+ */
+export const ROSTER_IDS = [
+  'gpt-4o',
+  'claude-sonnet',
+  'gemini-flash',
+  'mistral-large',
+  'deepseek-chat',
+  'llama-groq',
+] as const;
+
 export function ModelRoster() {
   return (
     <div>
-      <ul className="grid grid-cols-2 gap-px border border-line bg-line md:grid-cols-3">
-        {ROSTER.map((entry) => (
-          <li key={entry.model} className="bg-canvas px-4 py-4">
-            <span data-register="machine" className="text-note uppercase text-ink-3">
-              {entry.provider}
-            </span>
-            <p className="mt-1.5 text-ui font-[550] text-ink">{entry.model}</p>
-          </li>
-        ))}
+      <ul className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {ROSTER.map((entry, index) => {
+          const hue = modelHue(ROSTER_IDS[index] ?? '');
+          return (
+            <li
+              key={entry.model}
+              style={{ '--card-rgb': hue.rgb } as CSSProperties}
+              className="relative overflow-hidden rounded-card border border-line bg-raised px-4 py-4 shadow-float transition-[transform,border-color] duration-(--duration-normal) ease-out hover:-translate-y-0.5 hover:border-[rgb(var(--card-rgb)/0.5)]"
+            >
+              {/* The model's hue: a bar along the top and a soft field behind. */}
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 top-0 h-[3px]"
+                style={{ backgroundImage: hue.gradient }}
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -right-10 -top-12 size-32 rounded-full bg-[radial-gradient(closest-side,rgb(var(--card-rgb)/0.22),transparent)]"
+              />
+              <span className="relative flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="size-2 rounded-full"
+                  style={{ backgroundImage: hue.gradient }}
+                />
+                <span data-register="machine" className="text-note uppercase text-ink-3">
+                  {entry.provider}
+                </span>
+              </span>
+              <p className="relative mt-1.5 text-ui font-[550] text-ink">{entry.model}</p>
+            </li>
+          );
+        })}
       </ul>
 
       <p className="mt-5 max-w-[62ch] text-ui text-ink-2">

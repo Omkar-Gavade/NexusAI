@@ -38,8 +38,19 @@ export function isRetryable(error: unknown): boolean {
   return error.status >= 500 || error.status === 429;
 }
 
+/**
+ * The request never got a response. Only say "offline" when the browser says
+ * so: with a working connection the likelier cause is the server being down
+ * or still starting, and telling someone to check their Wi-Fi is wrong.
+ */
 const offline = () =>
-  new ApiError('NETWORK_ERROR', "You're offline. Check your connection.", 0);
+  typeof navigator !== 'undefined' && navigator.onLine === false
+    ? new ApiError('NETWORK_ERROR', "You're offline. Check your connection.", 0)
+    : new ApiError(
+        'NETWORK_ERROR',
+        "Couldn't reach the NexusAI server. Try again in a moment.",
+        0,
+      );
 
 async function toApiError(response: Response): Promise<ApiError> {
   let body: unknown;
@@ -63,7 +74,12 @@ async function toApiError(response: Response): Promise<ApiError> {
   }
 
   // The API always returns the envelope. Reaching here means a proxy or gateway
-  // answered instead, so there is no code to trust and we say the honest thing.
+  // answered instead. A 502/503/504 from it means the server is down or still
+  // starting (a sleeping host takes a while to wake) — say that, and that
+  // retrying will help, rather than a bare "Something went wrong".
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    return new ApiError('SERVER_SHUTDOWN', errorMessages.SERVER_SHUTDOWN, response.status);
+  }
   return new ApiError('INTERNAL', errorMessages.INTERNAL, response.status);
 }
 

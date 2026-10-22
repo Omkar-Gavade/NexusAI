@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { ROSTER } from './model-roster';
+import { modelHue } from './spectrum';
 
 /**
  * The orchestration graph: question → fan-out → models → convergence →
@@ -22,6 +23,8 @@ import { ROSTER } from './model-roster';
 
 type Lane = {
   id: string;
+  /** Catalog id, for the lane's hue. */
+  modelId: string;
   label: string;
   /** Where the response arrives, relative to the others. */
   returnsAt: number | null;
@@ -44,9 +47,9 @@ type Lane = {
  * deployment, which is exactly what the diagram is illustrating.
  */
 const LANES: readonly Lane[] = [
-  { id: 'a', label: ROSTER[0].model, returnsAt: 0, state: 'ok' },
-  { id: 'b', label: ROSTER[2].model, returnsAt: 420, state: 'ok' },
-  { id: 'c', label: ROSTER[3].model, returnsAt: null, state: 'unavailable' },
+  { id: 'a', modelId: 'gpt-4o', label: ROSTER[0].model, returnsAt: 0, state: 'ok' },
+  { id: 'b', modelId: 'gemini-flash', label: ROSTER[2].model, returnsAt: 420, state: 'ok' },
+  { id: 'c', modelId: 'mistral-large', label: ROSTER[3].model, returnsAt: null, state: 'unavailable' },
 ];
 
 /** Vertical centre of each lane in viewBox units, paired with the lane. */
@@ -67,7 +70,7 @@ export function OrchestrationGraph({ className }: { className?: string }) {
         the responses that arrived and streams a single answer.
       </p>
 
-      <div className="border border-line bg-canvas">
+      <div className="overflow-hidden rounded-card border border-line bg-canvas">
         <div className="flex items-center justify-between border-b border-line bg-workspace px-4 py-2.5">
           <span data-register="machine" className="text-note uppercase text-ink-3">
             Orchestration
@@ -84,15 +87,29 @@ export function OrchestrationGraph({ className }: { className?: string }) {
           style={{ overflow: 'visible' }}
         >
           {/* --- Paths ------------------------------------------------------ */}
-          <g fill="none" stroke="currentColor" className="text-line" strokeWidth="1.25">
+          {/* Each lane in its model's hue, so a request can be followed from
+              the question to the model and back to the synthesis. */}
+          <g fill="none" strokeWidth="1.75" strokeLinecap="round">
             {ROWS.map((row) => (
-              <path key={`out-${row.id}`} d={outbound(row.y)} />
+              <path
+                key={`out-${row.id}`}
+                d={outbound(row.y)}
+                stroke={modelHue(row.modelId).solid}
+                strokeOpacity={row.state === 'unavailable' ? 0.35 : 0.75}
+              />
             ))}
             {ROWS.map((row) =>
-              row.state === 'unavailable' ? null : <path key={`in-${row.id}`} d={inbound(row.y)} />,
+              row.state === 'unavailable' ? null : (
+                <path
+                  key={`in-${row.id}`}
+                  d={inbound(row.y)}
+                  stroke={modelHue(row.modelId).solid}
+                  strokeOpacity={0.75}
+                />
+              ),
             )}
             {/* Synthesis → answer. */}
-            <path d="M604 130 H648" />
+            <path d="M604 130 H648" stroke="#8b5cf6" strokeWidth="2" />
           </g>
 
           {/* An unavailable lane's return path is drawn broken, the same
@@ -111,9 +128,9 @@ export function OrchestrationGraph({ className }: { className?: string }) {
           {ROWS.map((row, index) => (
             <circle
               key={`p-out-${row.id}`}
-              r="3"
-              className="nx-particle text-accent"
-              fill="currentColor"
+              r="3.5"
+              className="nx-particle"
+              fill={modelHue(row.modelId).solid}
               style={{
                 offsetPath: `path("${outbound(row.y)}")`,
                 animationDelay: `${index * 70}ms`,
@@ -124,9 +141,9 @@ export function OrchestrationGraph({ className }: { className?: string }) {
             row.returnsAt === null ? null : (
               <circle
                 key={`p-in-${row.id}`}
-                r="3"
-                className="nx-particle text-accent"
-                fill="currentColor"
+                r="3.5"
+                className="nx-particle"
+                fill={modelHue(row.modelId).solid}
                 style={{
                   offsetPath: `path("${inbound(row.y)}")`,
                   animationDelay: `${1250 + row.returnsAt}ms`,
@@ -161,12 +178,13 @@ export function OrchestrationGraph({ className }: { className?: string }) {
               y={row.y}
               w={132}
               label={row.label}
+              color={modelHue(row.modelId).solid}
               muted={row.state === 'unavailable'}
               dashed={row.state === 'unavailable'}
               caption={row.state === 'unavailable' ? 'unavailable' : undefined}
             />
           ))}
-          <Node x={553} y={130} w={102} label="Synthesis" accent />
+          <Node x={553} y={130} w={102} label="Synthesis" accent color="#8b5cf6" />
           <Node x={684} y={130} w={72} label="Answer" />
         </svg>
       </div>
@@ -190,6 +208,7 @@ function Node({
   accent = false,
   muted = false,
   dashed = false,
+  color,
 }: {
   x: number;
   y: number;
@@ -199,6 +218,8 @@ function Node({
   accent?: boolean;
   muted?: boolean;
   dashed?: boolean;
+  /** The node's hue: its outline and a small swatch. */
+  color?: string | undefined;
 }) {
   const h = caption ? 44 : 34;
 
@@ -209,11 +230,12 @@ function Node({
         y={y - h / 2}
         width={w}
         height={h}
-        rx="3"
-        className={clsx(accent ? 'text-accent-quiet' : 'text-line')}
-        fill="var(--surface-raised)"
-        stroke="currentColor"
-        strokeWidth="1.25"
+        rx="9"
+        className={clsx(!color && 'text-line')}
+        fill={color ? `color-mix(in oklab, ${color} 12%, var(--surface-raised))` : 'var(--surface-raised)'}
+        stroke={color ?? 'currentColor'}
+        strokeOpacity={muted ? 0.45 : 0.85}
+        strokeWidth={accent ? 2 : 1.5}
         strokeDasharray={dashed ? '3 4' : undefined}
       />
       <text
@@ -222,7 +244,7 @@ function Node({
         textAnchor="middle"
         className={clsx(
           'text-[11px]',
-          accent ? 'fill-(--accent)' : muted ? 'fill-(--text-tertiary)' : 'fill-(--text-secondary)',
+          accent ? 'fill-(--text-primary) font-semibold' : muted ? 'fill-(--text-tertiary)' : 'fill-(--text-primary)',
         )}
         style={{ fontFamily: 'var(--font-machine)' }}
       >

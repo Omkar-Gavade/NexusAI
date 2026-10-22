@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { agreementSentence } from '@/lib/format';
+import { HUES, type Hue } from './spectrum';
 
 /**
  * The product's central mechanic, drawn once: one question fans out to several
@@ -23,10 +24,19 @@ const ILLUSTRATED_AGREEMENT = { requested: 3, responded: 2, concur: 1, diverge: 
 
 type LaneState = 'concurs' | 'diverges' | 'no-response';
 
-const LANES: ReadonlyArray<{ label: string; state: LaneState; lines: readonly string[] }> = [
-  { label: 'Model A', state: 'concurs', lines: ['100%', '82%', '61%'] },
-  { label: 'Model B', state: 'diverges', lines: ['92%', '70%'] },
-  { label: 'Model C', state: 'no-response', lines: [] },
+/*
+ * Each lane has a hue so the three models can be told apart at a glance. The
+ * hue names the model, never its stance: agreement is the segment below.
+ */
+const LANES: ReadonlyArray<{
+  label: string;
+  state: LaneState;
+  lines: readonly string[];
+  hue: Hue;
+}> = [
+  { label: 'Model A', state: 'concurs', lines: ['100%', '82%', '61%'], hue: HUES.indigo },
+  { label: 'Model B', state: 'diverges', lines: ['92%', '70%'], hue: HUES.cyan },
+  { label: 'Model C', state: 'no-response', lines: [], hue: HUES.rose },
 ];
 
 const STATE_LABEL: Record<LaneState, string> = {
@@ -37,22 +47,36 @@ const STATE_LABEL: Record<LaneState, string> = {
 
 /** A short vertical connector. Structure, not decoration — so it stays square. */
 function Connector({ className }: { className?: string }) {
-  return <span aria-hidden="true" className={clsx('block w-px bg-line', className)} />;
+  return (
+    <span
+      aria-hidden="true"
+      className={clsx('block w-0.5 rounded-full bg-gradient-to-b from-[#8b5cf6] to-[#d946ef] opacity-60', className)}
+    />
+  );
 }
 
-function Lane({ label, state, lines }: (typeof LANES)[number]) {
+function Lane({ label, state, lines, hue }: (typeof LANES)[number]) {
   const failed = state === 'no-response';
 
   return (
     <div
       className={clsx(
-        'flex min-h-[132px] flex-col gap-3 border p-4',
-        failed ? 'border-dashed border-line' : 'border-line',
+        'relative flex min-h-[132px] flex-col gap-3 overflow-hidden rounded-card border bg-raised p-4',
+        failed ? 'border-dashed border-line' : 'border-line shadow-float',
       )}
     >
+      {!failed && (
+        <span className="absolute inset-x-0 top-0 h-[3px]" style={{ backgroundImage: hue.gradient }} />
+      )}
       <div className="flex items-baseline justify-between gap-2">
-        <span data-register="machine" className="text-note uppercase text-ink-2">
-          {label}
+        <span className="flex items-center gap-2">
+          <span
+            className={clsx('size-2 shrink-0 rounded-full', failed && 'opacity-40')}
+            style={{ backgroundImage: hue.gradient }}
+          />
+          <span data-register="machine" className="text-note uppercase text-ink-2">
+            {label}
+          </span>
         </span>
         <span
           data-register="machine"
@@ -71,7 +95,11 @@ function Lane({ label, state, lines }: (typeof LANES)[number]) {
           {lines.map((width, index) => (
             // Indexed because these are decorative placeholders in a fixed
             // list, and two lines may legitimately share a width.
-            <span key={index} className="block h-1.5 bg-hover" style={{ width }} />
+            <span
+              key={index}
+              className="block h-1.5 rounded-full"
+              style={{ width, backgroundColor: `rgb(${hue.rgb} / 0.32)` }}
+            />
           ))}
         </div>
       )}
@@ -106,13 +134,13 @@ export function SynthesisDiagram() {
 
       <div aria-hidden="true" className="flex flex-col items-center">
         {/* --- The question ------------------------------------------------ */}
-        <div className="w-full max-w-[420px] border border-line bg-raised px-4 py-3">
+        <div className="w-full max-w-[420px] rounded-card border border-line bg-raised px-4 py-3 shadow-float">
           <span data-register="machine" className="text-note uppercase text-ink-3">
             One question
           </span>
           <div className="mt-2 flex flex-col gap-2">
-            <span className="block h-1.5 w-[86%] bg-hover" />
-            <span className="block h-1.5 w-[54%] bg-hover" />
+            <span className="block h-1.5 w-[86%] rounded-full bg-hover" />
+            <span className="block h-1.5 w-[54%] rounded-full bg-hover" />
           </div>
         </div>
 
@@ -128,20 +156,27 @@ export function SynthesisDiagram() {
         <Connector className="h-6" />
 
         {/* --- Synthesis ---------------------------------------------------- */}
-        <div className="w-full border border-accent-quiet bg-workspace p-4 md:p-5">
-          <span data-register="machine" className="text-note uppercase text-accent">
-            Synthesis
-          </span>
+        {/* The synthesis carries every lane's colour: it is made of them. */}
+        <div className="w-full rounded-card bg-spectrum p-px shadow-[0_18px_48px_-20px_rgb(139_92_246/0.6)]">
+          <div className="rounded-[13px] bg-raised p-4 md:p-5">
+            <span data-register="machine" className="text-note uppercase text-accent">
+              Synthesis
+            </span>
 
-          <div className="mt-3 flex flex-col gap-2.5">
-            {SYNTHESIS_LINES.map((width, index) => (
-              <span key={index} className="block h-2 bg-hover" style={{ width }} />
-            ))}
+            <div className="mt-3 flex flex-col gap-2.5">
+              {SYNTHESIS_LINES.map((width, index) => (
+                <span
+                  key={index}
+                  className="block h-2 rounded-full bg-spectrum opacity-45"
+                  style={{ width }}
+                />
+              ))}
+            </div>
+
+            <p data-register="machine" className="mt-4 text-meta text-ink-3">
+              {agreementSentence(ILLUSTRATED_AGREEMENT)}
+            </p>
           </div>
-
-          <p data-register="machine" className="mt-4 text-meta text-ink-3">
-            {agreementSentence(ILLUSTRATED_AGREEMENT)}
-          </p>
         </div>
       </div>
 

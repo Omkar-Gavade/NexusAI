@@ -34,12 +34,15 @@ export function LoginPage() {
 
   return (
     <AuthLayout
-      title="Sign in"
-      description="Continue to your workspace."
+      title="Welcome back"
+      description="Sign in to continue to your workspace."
       footer={
         <>
           No account?{' '}
-          <Link to={withNext(routes.register, next)} className="text-accent hover:underline">
+          <Link
+            to={withNext(routes.register, next)}
+            className="font-medium text-accent hover:text-accent-strong hover:underline"
+          >
             Create one
           </Link>
         </>
@@ -72,7 +75,7 @@ export function LoginPage() {
 
         {formError && <Alert title={formError} />}
 
-        <Button type="submit" variant="primary" size="lg" loading={login.isPending}>
+        <Button type="submit" variant="primary" size="lg" loading={login.isPending} className="mt-1 w-full">
           Sign in
         </Button>
       </form>

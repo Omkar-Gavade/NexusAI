@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import clsx from 'clsx';
 import { Check, Columns2, Sparkles } from 'lucide-react';
 import { estimateModelCost } from '@nexusai/contracts';
 import { ModelMark } from '@/features/chat/components/model-mark';
 import { estimatedCost, latency, nullableTokens } from '@/lib/format';
 import { ROSTER } from './model-roster';
+import { modelHue } from './spectrum';
 
 const ARENA_ILLUSTRATION = [
   {
@@ -53,7 +54,7 @@ export function ModelArenaPreview() {
   return (
     <div
       data-testid="homepage-model-arena-preview"
-      className="border border-line bg-canvas p-4 shadow-float md:p-6"
+      className="rounded-overlay border border-line bg-canvas/80 p-4 shadow-[var(--shadow-modal-value),var(--shadow-glow-value)] md:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle pb-3.5">
         <div className="flex items-center gap-2">
@@ -89,15 +90,25 @@ export function ModelArenaPreview() {
         {ARENA_ILLUSTRATION.map((item, idx) => {
           const isSelected = selectedModelId === item.modelId;
           const cost = estimateModelCost(item.modelId, item.inputTokens, item.outputTokens);
+          const hue = modelHue(item.modelId);
 
           return (
             <article
               key={item.modelId}
+              style={{ '--card-rgb': hue.rgb } as CSSProperties}
               className={clsx(
-                'flex flex-col justify-between border bg-raised transition-colors duration-(--duration-instant)',
-                isSelected ? 'border-accent ring-1 ring-accent' : 'border-line',
+                'relative flex flex-col justify-between overflow-hidden rounded-card border bg-raised transition-[border-color,box-shadow] duration-(--duration-quick)',
+                isSelected
+                  ? 'border-[rgb(var(--card-rgb)/0.75)] shadow-[0_0_0_3px_rgb(var(--card-rgb)/0.18),0_16px_40px_-18px_rgb(var(--card-rgb)/0.7)]'
+                  : 'border-line',
               )}
             >
+              {/* Each column in its model's colour. */}
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 top-0 h-[3px]"
+                style={{ backgroundImage: hue.gradient }}
+              />
               <div>
                 <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
                   <div className="flex min-w-0 items-center gap-2">
@@ -136,7 +147,7 @@ export function ModelArenaPreview() {
                       : 'border-line-control bg-canvas text-ink-2 hover:text-ink',
                   )}
                 >
-                  {isSelected && <Check size={12} aria-hidden="true" className="text-accent" />}
+                  {isSelected && <Check size={12} aria-hidden="true" style={{ color: hue.solid }} />}
                   <span>{isSelected ? 'Selected answer' : 'Select this answer'}</span>
                 </button>
               </footer>
@@ -158,8 +169,9 @@ export function ModelArenaPreview() {
       {combined && (
         <div
           data-testid="homepage-arena-combined-synthesis"
-          className="mt-4 border-l-2 border-l-accent bg-raised p-4"
+          className="relative mt-4 overflow-hidden rounded-card border border-line bg-raised p-4 pl-5"
         >
+          <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-spectrum" />
           <div className="flex items-center justify-between gap-2">
             <span data-register="machine" className="text-note uppercase text-accent">
               COMBINED SYNTHESIS · RECONCILED FROM 3 COMPLETED RESPONSES

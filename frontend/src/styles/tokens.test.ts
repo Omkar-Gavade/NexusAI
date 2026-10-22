@@ -170,18 +170,22 @@ describe('token system integrity', () => {
     }
   });
 
-  it('caps the radius scale at 8px so nothing reads as a soft AI card', () => {
+  // The 2026 system rounds controls (10px), cards (14px) and overlays (16px).
+  // The ceiling keeps it there: nothing becomes a 24px blob.
+  it('caps the radius scale at 16px', () => {
     const radii = [...css.matchAll(/--radius-[\w-]+:\s*(\d+)px/g)].map((m) => Number(m[1]));
     expect(radii.length).toBeGreaterThan(0);
-    expect(Math.max(...radii)).toBeLessThanOrEqual(8);
+    expect(Math.max(...radii)).toBeLessThanOrEqual(16);
   });
 
-  it('keeps every motion duration inside the 100-220ms band', () => {
+  // Micro-interactions read as responsive between ~100 and 300ms; slower
+  // feels sluggish, faster is not perceived as motion at all.
+  it('keeps every motion duration inside the 100-300ms band', () => {
     const durations = [...css.matchAll(/--duration-[\w-]+:\s*(\d+)ms/g)].map((m) => Number(m[1]));
     expect(durations.length).toBeGreaterThan(0);
     for (const duration of durations) {
       expect(duration).toBeGreaterThanOrEqual(100);
-      expect(duration).toBeLessThanOrEqual(220);
+      expect(duration).toBeLessThanOrEqual(300);
     }
   });
 });

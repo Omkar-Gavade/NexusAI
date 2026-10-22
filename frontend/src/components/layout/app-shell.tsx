@@ -88,7 +88,13 @@ export function AppShell() {
         />
       )}
 
-      <main id="workspace" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
+      <main
+        id="workspace"
+        tabIndex={-1}
+        className="relative isolate flex min-w-0 flex-1 flex-col bg-canvas outline-none"
+      >
+        {/* One static glow at the top of the workspace — depth without motion. */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-ambient" />
         <Outlet />
       </main>
 

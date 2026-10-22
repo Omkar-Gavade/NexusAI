@@ -36,12 +36,15 @@ export function RegisterPage() {
 
   return (
     <AuthLayout
-      title="Create an account"
-      description="One interface for several models."
+      title="Create your account"
+      description="One workspace for every model — routed, compared or combined."
       footer={
         <>
           Already have an account?{' '}
-          <Link to={withNext(routes.login, next)} className="text-accent hover:underline">
+          <Link
+            to={withNext(routes.login, next)}
+            className="font-medium text-accent hover:text-accent-strong hover:underline"
+          >
             Sign in
           </Link>
         </>
@@ -86,7 +89,13 @@ export function RegisterPage() {
 
         {formError && <Alert title={formError} />}
 
-        <Button type="submit" variant="primary" size="lg" loading={register.isPending}>
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          loading={register.isPending}
+          className="mt-1 w-full"
+        >
           Create account
         </Button>
       </form>

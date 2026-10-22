@@ -31,7 +31,7 @@ const OUTCOME_LABEL = {
 
 export function UsedModels() {
   return (
-    <div className="max-w-[38rem] border border-line bg-canvas p-6">
+    <div className="max-w-[38rem] rounded-card border border-line bg-canvas p-6">
       <span data-register="machine" className="text-note uppercase text-ink-3">
         Used models
       </span>

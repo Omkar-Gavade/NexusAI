@@ -67,15 +67,46 @@ describe('readSSE', () => {
     expect(await collect('data:  indented\n\n')).toEqual([' indented']);
   });
 
-  it('stops when the signal aborts', async () => {
+  it('stops when the signal aborts, and says it was aborted', async () => {
     const controller = new AbortController();
     const out: string[] = [];
     const stream = streamOf('data: one\n\ndata: two\n\n');
-    for await (const payload of readSSE(stream, controller.signal)) {
-      out.push(payload);
-      controller.abort();
-    }
+    await expect(
+      (async () => {
+        for await (const payload of readSSE(stream, controller.signal)) {
+          out.push(payload);
+          controller.abort();
+        }
+      })(),
+    ).rejects.toMatchObject({ name: 'AbortError' });
     expect(out.length).toBeLessThanOrEqual(2);
     expect(out[0]).toBe('one');
+  });
+});
+
+describe('readSSE — abort', () => {
+  // Chromium resolves a cancelled body read as `done`, so without an explicit
+  // check an aborted stream was indistinguishable from a finished one, and
+  // the Stop button never took the UI out of its streaming state.
+  it('rejects when the stream ends because it was aborted, rather than ending as if finished', async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"a":1}\n\n'));
+        // Never closes on its own: only cancellation ends it.
+      },
+    });
+    const controller = new AbortController();
+    const seen: string[] = [];
+
+    const run = (async () => {
+      for await (const payload of readSSE(body, controller.signal)) {
+        seen.push(payload);
+        controller.abort();
+      }
+    })();
+
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    expect(seen).toEqual(['{"a":1}']);
   });
 });

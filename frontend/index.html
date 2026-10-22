@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#131211" />
+    <meta name="theme-color" content="#0a0a0f" />
     <title>NexusAI</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <script>
@@ -22,7 +22,7 @@
           document.documentElement.dataset.theme = resolved;
           document
             .querySelector('meta[name="theme-color"]')
-            .setAttribute('content', resolved === 'light' ? '#FBFAF8' : '#131211');
+            .setAttribute('content', resolved === 'light' ? '#fcfcfd' : '#0a0a0f');
         } catch (_) {
           /* localStorage unavailable: the dark default in the markup stands */
         }

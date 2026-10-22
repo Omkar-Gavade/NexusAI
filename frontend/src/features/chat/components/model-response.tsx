@@ -58,6 +58,7 @@ export function ModelResponse({
   onFollowUp,
   arenaMode = false,
   retrying = false,
+  retryDisabledReason = null,
 }: {
   slot: ModelSlot;
   index: number;
@@ -67,6 +68,8 @@ export function ModelResponse({
   onFollowUp?: ((modelId: string, displayName: string) => void) | undefined;
   arenaMode?: boolean;
   retrying?: boolean;
+  /** Set while a retry cannot run yet; shown as the reason. */
+  retryDisabledReason?: string | null;
 }) {
   const [copied, setCopied] = useState(false);
   const diverges = slot.stance === 'diverges';
@@ -101,7 +104,7 @@ export function ModelResponse({
       aria-label={`${slot.model.displayName} response`}
       aria-busy={running || undefined}
       className={clsx(
-        'relative border bg-raised transition-[border-color,background-color] duration-(--duration-quick) ease-out',
+        'relative overflow-hidden rounded-card border bg-raised shadow-float transition-[border-color,background-color] duration-(--duration-quick) ease-out',
         arenaMode
           ? 'row-span-3 grid grid-rows-subgrid gap-0 motion-safe:animate-[nx-panel-in_200ms_var(--ease-out)]'
           : 'flex flex-col',
@@ -250,6 +253,8 @@ export function ModelResponse({
                 size="sm"
                 variant="secondary"
                 loading={retrying}
+                disabled={retryDisabledReason !== null || retrying}
+                title={retryDisabledReason ?? undefined}
                 icon={<RotateCcw size={12} aria-hidden="true" />}
                 onClick={() => onRetry(slot.model.modelId)}
               >

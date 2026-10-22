@@ -50,6 +50,17 @@ export function useChatStream(callbacks: {
    */
   const inFlight = useRef(false);
 
+  /*
+   * Which send this view is listening to. `reset` (the reader opened another
+   * conversation) moves it on, which *detaches* the running stream rather than
+   * cancelling it: the request keeps going so the server finishes and persists
+   * that answer, but its events stop reaching this view and its latch is
+   * released. Without this the old stream kept dispatching into the new
+   * conversation — its Stop button cancelled the other answer, and a message
+   * typed here was turned away by the still-held latch.
+   */
+  const generation = useRef(0);
+
   // Deltas land far faster than a frame. They accumulate in a ref and flush on
   // requestAnimationFrame, so React commits at most once per frame regardless
   // of token rate — this is what keeps the composer responsive while streaming.
@@ -83,6 +94,8 @@ export function useChatStream(callbacks: {
     async ({ conversationId, prompt, selection }: SendArgs) => {
       if (inFlight.current || isStreaming(state.phase)) return;
       inFlight.current = true;
+      const mine = ++generation.current;
+      const current = () => generation.current === mine;
 
       const clientMessageId = ulid();
       setPending({ clientMessageId, prompt });
@@ -101,16 +114,16 @@ export function useChatStream(callbacks: {
           abort.signal,
         )) {
           if (event.type === 'start') {
-            setLiveMessageId(event.messageId);
-            if (conversationId === null) {
-              created = event.conversationId;
-              callbacks.onConversationCreated(event.conversationId);
+            created = event.conversationId;
+            if (current()) {
+              setLiveMessageId(event.messageId);
+              if (conversationId === null) callbacks.onConversationCreated(event.conversationId);
             }
           }
           if (event.type === 'complete' || event.type === 'error' || event.type === 'cancelled') {
             settled = true;
           }
-          enqueue({ kind: 'event', event });
+          if (current()) enqueue({ kind: 'event', event });
         }
 
         /*
@@ -119,7 +132,14 @@ export function useChatStream(callbacks: {
          * `models`/`synthesis` forever: a spinner that never stopped and a
          * composer stuck on Stop. Whatever text arrived is kept as partial.
          */
-        if (!settled && !abort.signal.aborted) {
+        // Belt and braces for the same case `readSSE` now reports: a stopped
+        // stream must leave the streaming state even if its body just ended.
+        if (abort.signal.aborted) {
+          if (current()) enqueue({ kind: 'abort' });
+          return;
+        }
+
+        if (!settled && current()) {
           enqueue({
             kind: 'event',
             event: {
@@ -132,6 +152,7 @@ export function useChatStream(callbacks: {
           });
         }
       } catch (error) {
+        if (!current()) return;
         if (abort.signal.aborted) {
           enqueue({ kind: 'abort' });
           return;
@@ -147,32 +168,37 @@ export function useChatStream(callbacks: {
           },
         });
       } finally {
-        inFlight.current = false;
-        controller.current = null;
+        // A detached stream only refreshes the caches of the conversation it
+        // belonged to, so its answer is there when the reader goes back; the
+        // view-level cleanup below belongs to whichever stream is current.
+        if (current()) {
+          inFlight.current = false;
+          controller.current = null;
 
-        /*
-         * Apply whatever is still queued, without waiting for a frame.
-         *
-         * `requestAnimationFrame` does not fire while the page is not being
-         * painted — a background tab, a hidden window. Batching onto it is a
-         * rendering optimisation, so it is correct for deltas mid-stream: there
-         * is nothing to paint anyway. It is not correct for the terminal
-         * events. A turn that finished while hidden left `complete` sitting in
-         * the queue, so the reducer never learned the message id, the turn
-         * never reconciled against history, and the optimistic user message was
-         * stranded on screen with no answer beneath it — reproduced with
-         * `document.visibilityState === 'hidden'`.
-         *
-         * Flushing here makes correctness independent of paint: the frame
-         * coalesces updates when one arrives, and the stream ending applies the
-         * rest either way.
-         */
-        if (frame.current !== null) {
-          cancelAnimationFrame(frame.current);
-          frame.current = null;
+          /*
+           * Apply whatever is still queued, without waiting for a frame.
+           *
+           * `requestAnimationFrame` does not fire while the page is not being
+           * painted — a background tab, a hidden window. Batching onto it is a
+           * rendering optimisation, so it is correct for deltas mid-stream:
+           * there is nothing to paint anyway. It is not correct for the
+           * terminal events. A turn that finished while hidden left `complete`
+           * sitting in the queue, so the reducer never learned the message id,
+           * the turn never reconciled against history, and the optimistic user
+           * message was stranded on screen with no answer beneath it —
+           * reproduced with `document.visibilityState === 'hidden'`.
+           *
+           * Flushing here makes correctness independent of paint: the frame
+           * coalesces updates when one arrives, and the stream ending applies
+           * the rest either way.
+           */
+          if (frame.current !== null) {
+            cancelAnimationFrame(frame.current);
+            frame.current = null;
+          }
+          flush();
+          setActive(false);
         }
-        flush();
-        setActive(false);
 
         callbacks.onSettled(conversationId ?? created);
       }
@@ -186,6 +212,16 @@ export function useChatStream(callbacks: {
   }, []);
 
   const reset = useCallback(() => {
+    // Detach, not cancel: see `generation`.
+    generation.current += 1;
+    inFlight.current = false;
+    controller.current = null;
+    queue.current = [];
+    if (frame.current !== null) {
+      cancelAnimationFrame(frame.current);
+      frame.current = null;
+    }
+    setActive(false);
     setPending(null);
     setLiveMessageId(null);
     dispatch({ kind: 'reset' });

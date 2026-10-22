@@ -2,7 +2,7 @@ import type { ChatEvent, Message } from '@nexusai/contracts';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestQueryClient } from '@/test/render';
 import { sessionKey } from '@/features/auth/use-session';
@@ -414,5 +414,163 @@ describe('the first message of a new conversation', () => {
     expect(screen.getByRole('button', { name: /stop generating/i })).toBeInTheDocument();
 
     release?.();
+  });
+});
+
+describe('switching conversations while an answer is still streaming', () => {
+  it('leaves the other stream running in the background and lets the new conversation send', async () => {
+    const user = userEvent.setup();
+    const client = createTestQueryClient();
+    client.setQueryData(sessionKey, {
+      id: 'u',
+      email: 'a@b.co',
+      displayName: 'A',
+      preferences: { theme: 'system', routingMode: 'balanced', pinnedModelId: null },
+      createdAt: new Date().toISOString(),
+    });
+    client.setQueryData(conversationsKey, { conversations: [], nextCursor: null });
+    client.setQueryData(messagesKey('abc'), { messages: EXISTING, nextCursor: null });
+    client.setQueryData(messagesKey('other'), { messages: [], nextCursor: null });
+    vi.mocked(api.fetchMessages).mockResolvedValue({ messages: [], nextCursor: null });
+
+    let releaseFirst: (() => void) | undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let finishFirst: (() => void) | undefined;
+    const firstStillOpen = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    let firstSignal: AbortSignal | undefined;
+    vi.mocked(api.openChatStream)
+      .mockImplementationOnce(async function* (_body, signal) {
+        firstSignal = signal;
+        yield { type: 'start', conversationId: 'abc', messageId: 'a2', plan: [model], mode: 'auto' };
+        yield { type: 'model_start', modelId: 'gpt-4o' };
+        // The fan-out is still running when the reader leaves.
+        await firstHeld;
+        yield { type: 'delta', text: 'Late text from the first conversation.' };
+        // ...and is still open while the reader works in another conversation.
+        await firstStillOpen;
+        yield { type: 'complete', messageId: 'a2', latencyMs: 300, firstTokenMs: 120 };
+      })
+      .mockImplementationOnce(async function* () {
+        yield { type: 'start', conversationId: 'other', messageId: 'b1', plan: [model], mode: 'manual' };
+        yield { type: 'delta', text: 'Answer in the second conversation.' };
+        yield { type: 'complete', messageId: 'b1', latencyMs: 100, firstTokenMs: 20 };
+      });
+
+    function Nav() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate('/c/other')}>
+          go to other
+        </button>
+      );
+    }
+
+    rtlRender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/c/abc']}>
+          <Nav />
+          <Routes>
+            <Route path="/c/:conversationId" element={<ConversationPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /ask anything/i }), NEW_PROMPT);
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(screen.getByRole('button', { name: /stop generating/i })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'go to other' }));
+    releaseFirst?.();
+    // Let the first stream's late delta arrive while it is still open.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // The first conversation's stream must not take over this view.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /stop generating/i })).toBeNull());
+    expect(screen.queryByText(/Late text from the first conversation/)).toBeNull();
+    // Leaving did not cancel it: the generation is allowed to finish and persist.
+    expect(firstSignal?.aborted).toBe(false);
+
+    // A message typed here is actually sent, not silently swallowed.
+    await user.type(screen.getByRole('textbox', { name: /ask anything/i }), 'second conversation question');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(vi.mocked(api.openChatStream)).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByText(/Answer in the second conversation/)).toBeInTheDocument(),
+    );
+    finishFirst?.();
+  });
+});
+
+describe('Arena retry on the live turn', () => {
+  it('does not offer a retry that would do nothing while the comparison is still streaming', async () => {
+    const user = userEvent.setup();
+    const beta = { modelId: 'test-beta', provider: 'test', displayName: 'Test Beta' };
+    let finish: (() => void) | undefined;
+    const open = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    vi.mocked(api.openChatStream).mockImplementation(async function* () {
+      yield { type: 'start', conversationId: 'abc', messageId: 'a2', plan: [model, beta], mode: 'compare' };
+      yield { type: 'model_start', modelId: 'gpt-4o' };
+      yield { type: 'model_start', modelId: 'test-beta' };
+      yield { type: 'model_error', modelId: 'test-beta', code: 'TIMEOUT', message: 'x' };
+      yield { type: 'arena_delta', modelId: 'gpt-4o', text: 'Still writing ' };
+      await open;
+      yield { type: 'complete', messageId: 'a2', latencyMs: 300, firstTokenMs: 40 };
+    });
+
+    setup();
+    await user.type(screen.getByRole('textbox', { name: /ask anything/i }), NEW_PROMPT);
+    await user.keyboard('{Enter}');
+
+    const retry = await screen.findByRole('button', { name: /retry this model/i });
+    expect(retry).toBeDisabled();
+    expect(retry).toHaveAttribute('title', expect.stringMatching(/when the comparison finishes/i));
+    await user.click(retry);
+    expect(vi.mocked(api.openChatStream)).toHaveBeenCalledTimes(1);
+
+    finish?.();
+  });
+});
+
+describe('starting from the empty conversation', () => {
+  it('fills the composer with the picked starter and sends nothing', async () => {
+    const user = userEvent.setup();
+    const client = createTestQueryClient();
+    client.setQueryData(sessionKey, {
+      user: {
+        id: 'u',
+        email: 'a@b.co',
+        displayName: 'Ada Lovelace',
+        preferences: { theme: 'system', routingMode: 'balanced', pinnedModelId: null },
+        createdAt: new Date().toISOString(),
+      },
+    });
+    client.setQueryData(conversationsKey, { conversations: [], nextCursor: null });
+
+    rtlRender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/app']}>
+          <Routes>
+            <Route path="/app" element={<ConversationPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText(/hi ada/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /explain a difficult concept/i }));
+
+    const composer = screen.getByRole('textbox', { name: /ask anything/i });
+    expect(composer).toHaveValue(
+      'Explain how attention works in transformers, with an intuitive analogy and a small worked example.',
+    );
+    expect(composer).toHaveFocus();
+    expect(vi.mocked(api.openChatStream)).not.toHaveBeenCalled();
   });
 });

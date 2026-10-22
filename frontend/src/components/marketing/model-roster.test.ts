@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ROSTER } from './model-roster';
+import { ROSTER, ROSTER_IDS } from './model-roster';
 
 /**
  * The public model list must match the backend catalog.
@@ -83,6 +83,11 @@ describe('homepage previews', () => {
   it('the hero instrument scores exactly the catalog’s real models, in catalog order', () => {
     const shown = [...sources.hero.matchAll(/\{ id: '([^']+)', contextWindow/g)].map((m) => m[1]!);
     expect(shown).toEqual(catalogIds());
+  });
+
+  it('pairs each roster name with its catalog id, in catalog order', () => {
+    // Model hues follow these ids; a mismatch would colour one model as another.
+    expect([...ROSTER_IDS]).toEqual(catalogIds());
   });
 
   it('the Arena preview names only models that exist in the catalog', () => {

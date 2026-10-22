@@ -30,6 +30,11 @@ interface ComposerProps {
     onClear?: () => void;
   } | null;
   initialValue?: string | undefined;
+  /**
+   * Replaces the draft and focuses the field — a starter picked from the
+   * empty conversation. `nonce` lets the same text be applied twice.
+   */
+  prefill?: { text: string; nonce: number } | null | undefined;
 }
 
 /**
@@ -55,6 +60,7 @@ export function Composer({
   disabledReason,
   followUpContext,
   initialValue,
+  prefill,
 }: ComposerProps) {
   const [value, setValue] = useState(initialValue ?? '');
   const [focused, setFocused] = useState(false);
@@ -80,6 +86,17 @@ export function Composer({
     // Only apply when initialValue arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValue]);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setValue(prefill.text);
+    const node = textarea.current;
+    if (!node) return;
+    node.focus();
+    // Caret at the end, so a starter that ends in a blank line is ready for
+    // whatever the reader pastes next.
+    requestAnimationFrame(() => node.setSelectionRange(prefill.text.length, prefill.text.length));
+  }, [prefill]);
 
   const allModels = useMemo(() => catalogData?.models ?? [], [catalogData]);
   const routableModels = useMemo(
